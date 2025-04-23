@@ -102,6 +102,76 @@ void train_step_2v(double *x1, double *x2, double *y, size_t n, double *w1, doub
     *b  -= lr * db  / n;
 }
 
+void train_step_3v(double *x1, double *x2, double *x3, double *y, size_t n, double *w1, double *w2, double *w3, double *b, double lr) {
+    double dw1 = 0.0, dw2 = 0.0, dw3 = 0.0, db = 0.0;
+
+    size_t vl;
+    asm volatile("vsetvli %0, %1, e64, m1" : "=r"(vl) : "r"(n));
+
+    asm volatile(
+        // Load x1, x2, x3, y → v8, v9, v10, v11
+        "vle64.v v8, (%0)\n\t"
+        "vle64.v v9, (%1)\n\t"
+        "vle64.v v10, (%2)\n\t"
+        "vle64.v v11, (%3)\n\t"
+
+        // y_pred = x1 * w1 + x2 * w2 + x3 * w3 + b → v12
+        "vfmul.vf v12, v8, %4\n\t"      // x1 * w1
+        "vfmul.vf v13, v9, %5\n\t"      // x2 * w2
+        "vfmul.vf v14, v10, %6\n\t"     // x3 * w3
+        "vfadd.vv v12, v12, v13\n\t"    // (x1*w1 + x2*w2)
+        "vfadd.vv v12, v12, v14\n\t"    // (x1*w1 + x2*w2 + x3*w3)
+        "vfadd.vf v12, v12, %7\n\t"     // (x1*w1 + x2*w2 + x3*w3 + b)
+
+        // error = y_pred - y → v12
+        "vfsub.vv v12, v12, v11\n\t"
+
+        // db = sum(error) → v15
+        "vfredsum.vs v15, v12, v0\n\t"
+        "vfmv.f.s ft0, v15\n\t"
+        "fsd ft0, 0(%8)\n\t"
+
+        // dw1 = sum(error * x1)
+        "vfmul.vv v13, v12, v8\n\t"
+        "vfredsum.vs v15, v13, v0\n\t"
+        "vfmv.f.s ft0, v15\n\t"
+        "fsd ft0, 0(%9)\n\t"
+
+        // dw2 = sum(error * x2)
+        "vfmul.vv v13, v12, v9\n\t"
+        "vfredsum.vs v15, v13, v0\n\t"
+        "vfmv.f.s ft0, v15\n\t"
+        "fsd ft0, 0(%10)\n\t"
+
+        // dw3 = sum(error * x3)
+        "vfmul.vv v13, v12, v10\n\t"
+        "vfredsum.vs v15, v13, v0\n\t"
+        "vfmv.f.s ft0, v15\n\t"
+        "fsd ft0, 0(%11)\n\t"
+
+        :
+        : "r"(x1), "r"(x2), "r"(x3), "r"(y),
+        "f"(*w1), "f"(*w2), "f"(*w3), "f"(*b),
+        "r"(&db), "r"(&dw1), "r"(&dw2), "r"(&dw3)
+        : "ft0", "v8", "v9", "v10", "v11", "v12", "v13", "v14", "v15", "v0", "memory"
+    );
+
+    *w1 -= lr * dw1 / n;
+    *w2 -= lr * dw2 / n;
+    *w3 -= lr * dw3 / n;
+    *b  -= lr * db  / n;
+}
+
+double calculate_mse_3v(double *x1, double *x2, double *x3, double *y, size_t n, double w1, double w2, double w3, double b) {
+    double mse = 0.0;
+    for (size_t i = 0; i < n; i++) {
+        double y_pred = w1 * x1[i] + w2 * x2[i] + w3 * x3[i] + b;
+        double diff = y_pred - y[i];
+        mse += diff * diff;
+    }
+    return mse / n;
+}
+
 double calculate_mse_1v(double *x, double *y, size_t n, double w, double b) {
     double mse = 0.0;
     for (size_t i = 0; i < n; i++) {
