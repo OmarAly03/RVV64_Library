@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "linear_reg.h"
+#include "./lib/defs.h"
 
 #define N 8
 
