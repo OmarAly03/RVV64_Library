@@ -1,60 +1,80 @@
-#include <stdlib.h>
-#include <stdint.h>
-#include <stdio.h>
 #include "../lib/defs.h"
 
-void print_matrix(int32_t *matrix, int rows, int cols) {
-    for (int i = 0; i < rows; i++) {
-        for (int j = 0; j < cols; j++) {
-            printf("%4d ", matrix[i * cols + j]);
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <time.h>
+
+void transpose_seq(int32_t *B, int32_t *BT, int rows, int cols) {
+    for (int i = 0; i < rows; ++i)
+        for (int j = 0; j < cols; ++j)
+            BT[j * rows + i] = B[i * cols + j];
+}
+
+
+double timediff(struct timespec start, struct timespec end) {
+    return (end.tv_sec - start.tv_sec) + 1e-9 * (end.tv_nsec - start.tv_nsec);
+}
+
+void fill_matrix(int32_t *M, int rows, int cols) {
+    for (int i = 0; i < rows * cols; i++)
+        M[i] = rand() % 100; 
+}
+
+void run_test(int rows, int cols) {
+    int32_t *B = malloc(sizeof(int32_t) * rows * cols);
+    int32_t *BT_seq = malloc(sizeof(int32_t) * rows * cols);
+    int32_t *BT_rvv = malloc(sizeof(int32_t) * rows * cols);
+
+    fill_matrix(B, rows, cols);
+
+    struct timespec start, end;
+    double time_seq, time_rvv;
+
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    transpose_seq(B, BT_seq, rows, cols);
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    time_seq = timediff(start, end);
+
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    transpose_rvv(B, BT_rvv, rows, cols);
+    clock_gettime(CLOCK_MONOTONIC, &end);
+    time_rvv = timediff(start, end);
+
+    // Validate correctness
+    int correct = 1;
+    for (int i = 0; i < rows * cols; ++i) {
+        if (BT_seq[i] != BT_rvv[i]) {
+            correct = 0;
+            break;
         }
-        printf("\n");
     }
+
+    printf("Size %dx%d | Seq: %.6f s | RVV: %.6f s | Speedup: %.2fx | %s\n",
+        rows, cols, time_seq, time_rvv, time_seq / time_rvv, correct ? "Correct" : "Mismatch");
+
+    free(B);
+    free(BT_seq);
+    free(BT_rvv);
 }
 
 int main() {
-    // Define matrix dimensions
-    int rows_B = 3;
-    int cols_B = 4;
+    srand(time(NULL));
 
-    // Allocate memory for input matrix B and output matrix BT
-    int32_t *B = (int32_t *)malloc(rows_B * cols_B * sizeof(int32_t));
-    int32_t *BT = (int32_t *)malloc(cols_B * rows_B * sizeof(int32_t));
+    // Test small to large matrices
+    int sizes[][2] = {
+        {2048, 2048},
+        {4096, 4096},
+        {16384, 16384}
+    };
 
-    // Initialize matrix B with sample values
-    int32_t value = 1;
-    for (int i = 0; i < rows_B; i++) {
-        for (int j = 0; j < cols_B; j++) {
-            B[i * cols_B + j] = value++;
-        }
+    int num_tests = sizeof(sizes) / sizeof(sizes[0]);
+
+    for (int i = 0; i < num_tests; i++) {
+        int rows = sizes[i][0];
+        int cols = sizes[i][1];
+        run_test(rows, cols);
     }
-
-    // Print original matrix B
-    printf("Original Matrix B (%d x %d):\n", rows_B, cols_B);
-    print_matrix(B, rows_B, cols_B);
-
-    // Call the transpose function
-    transpose_rvv(B, BT, rows_B, cols_B);
-
-    // Print transposed matrix BT
-    printf("\nTransposed Matrix BT (%d x %d):\n", cols_B, rows_B);
-    print_matrix(BT, cols_B, rows_B);
-
-    // Verify the transposition
-    int correct = 1;
-    for (int i = 0; i < rows_B; i++) {
-        for (int j = 0; j < cols_B; j++) {
-            if (B[i * cols_B + j] != BT[j * rows_B + i]) {
-                correct = 0;
-                break;
-            }
-        }
-    }
-    printf("\nTransposition %s\n", correct ? "Correct" : "Incorrect");
-
-    // Free allocated memory
-    free(B);
-    free(BT);
 
     return 0;
 }
