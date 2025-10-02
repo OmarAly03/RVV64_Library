@@ -1,6 +1,6 @@
 # RISC-V Vector (RVV) Library – Matrix Multiplication & ReLU
 
-This repository contains RISC-V Vector implementations of common computational kernels with functional verification using ONNX models. The goal is to validate different RVV implementations by comparing them against ONNX golden reference outputs.
+This branch contains RISC-V Vector implementations of common computational kernels with functional verification using ONNX models. The goal is to validate different RVV implementations by comparing them against ONNX golden reference outputs.
 
 ## Kernels
 
@@ -29,7 +29,7 @@ This repository contains RISC-V Vector implementations of common computational k
 
 **Implementations:**
 - Python scalar (`relu_scalar.py`)
-- Python (NumPy maximum)
+- Python (NumPy)
 - C scalar (`relu_scalar`)
 - **RISC-V Vector intrinsics:**
   - `relu_e32m1` (LMUL=1)
