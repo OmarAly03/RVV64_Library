@@ -1,7 +1,6 @@
-# ONNX Testing Kernels – Matrix Multiplication & ReLU
+# RISC-V Vector (RVV) Library – Matrix Multiplication & ReLU
 
-This branch contains test kernels for functional verification using ONNX models.
-The goal is to validate different implementations of matrix multiplication and ReLU by comparing them against the ONNX golden reference output.
+This repository contains RISC-V Vector implementations of common computational kernels with functional verification using ONNX models. The goal is to validate different RVV implementations by comparing them against ONNX golden reference outputs.
 
 ## Kernels
 
@@ -11,40 +10,68 @@ The goal is to validate different implementations of matrix multiplication and R
 
 **Implementations:**
 - Python scalar (`matmult.py`)
-- Python vectorized (NumPy)
-- C scalar (`matmul.c` with wrapper `matmul_wrapper.py`)
+- Python (NumPy)
+- C scalar (`matmul_scalar`)
+- **RISC-V Vector intrinsics:**
+  - `matmul_e32m1` (LMUL=1)
+  - `matmul_e32m2` (LMUL=2)
+  - `matmul_e32m4` (LMUL=4)
+  - `matmul_e32m8` (LMUL=8)
 
-**Metrics:**
-- SNR (Signal-to-Noise Ratio)
-- Max Absolute Difference
+**Features:**
+- Supports arbitrary matrix sizes (M×K @ K×N → M×N)
+- Vectorized across output matrix columns
+- Fused multiply-accumulate (FMA) operations
 
-Results are documented in `matmul/x86/results.md`
-
-### 2. ReLU (`relu/`)
+### 2. ReLU Activation (`relu/`)
 
 **ONNX model:** `relu.onnx`
 
 **Implementations:**
 - Python scalar (`relu_scalar.py`)
-- C scalar (`relu.c` with wrapper `relu_wrapper.py`)
-
-**Metrics:**
-- SNR (Signal-to-Noise Ratio)
-- Max Absolute Difference
-
-Results are documented in `relu/x86/results.md`
+- Python (NumPy maximum)
+- C scalar (`relu_scalar`)
+- **RISC-V Vector intrinsics:**
+  - `relu_e32m1` (LMUL=1)
+  - `relu_e32m2` (LMUL=2) 
+  - `relu_e32m4` (LMUL=4)
+  - `relu_e32m8` (LMUL=8)
 
 ## Installation
 
-Install required dependencies:
-
+1. **Install Python dependencies:**
 ```bash
 pip install -r requirements.txt
 ```
+## Usage
 
-## Run the test runners:
+### Build and Run Tests
+
+**Matrix Multiplication:**
+```bash
+cd matmul/
+make clean
+make       
+make run SIZE=512    
+```
+
+**ReLU Activation:**
+```bash
+cd relu/
+make clean
+make         
+make run SIZE=4096    
+```
+
+### Python-only Testing (x86)
 
 ```bash
-python3 matmul/x86/main.py
-python3 relu/x86/main.py
+python3 matmul/main.py
+python3 relu/main.py
 ```
+
+## Performance Metrics
+
+Both kernels report:
+- **SNR (Signal-to-Noise Ratio):** Higher is better (∞ = perfect match)
+- **Max Absolute Error:** Lower is better (0 = perfect match)
