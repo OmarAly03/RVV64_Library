@@ -1,5 +1,5 @@
 CC = riscv64-unknown-linux-gnu-g++
-FLAGS = -march=rv64gcv -static
+FLAGS = -march=rv64gcv -static -O2
 
 # Include directories
 INCLUDES = -Iinclude
@@ -10,17 +10,30 @@ SRCS = run_nms.cpp src/rvv_nms.cpp src/utils.cpp
 # Output binary
 TARGET = ./output_files/run_nms
 
-SIZE ?= 16
+# Default test parameters: batches classes spatial_dim max_boxes iou_threshold score_threshold
+BATCHES ?= 1
+CLASSES ?= 2
+SPATIAL ?= 100
+MAX_BOXES ?= 50
+IOU_THRESH ?= 0.5
+SCORE_THRESH ?= 0.1
+
+.PHONY: run clean onnx
 
 $(TARGET): $(SRCS)
+	@mkdir -p output_files
 	@$(CC) $(FLAGS) $(INCLUDES) -o $@ $^
 
-run: $(TARGET)
-	@python3 src/onnx_nms.py $(SIZE)
-	@qemu-riscv64 -cpu rv64,v=true $(TARGET) $(SIZE)
-	@python3 main.py $(SIZE)
+onnx:
+	@python3 create_onnx_model.py
+
+run: $(TARGET) onnx onnx
+	@qemu-riscv64 -cpu rv64,v=true $(TARGET) $(BATCHES) $(CLASSES) $(SPATIAL) $(MAX_BOXES) $(IOU_THRESH) $(SCORE_THRESH)
+	@python3 main.py $(BATCHES) $(CLASSES) $(SPATIAL) $(MAX_BOXES) $(IOU_THRESH) $(SCORE_THRESH)
 
 clean:
-	rm -f $(TARGET) output_files/nms.onnx output_files/input.bin output_files/nms_*.bin
+	rm -f $(TARGET)
+	rm -rf output_files
 
-.PHONY: run clean
+# Example usage:
+# make BATCHES=2 CLASSES=3 SPATIAL=200 MAX_BOXES=100 IOU_THRESH=0.7 SCORE_THRESH=0.2 run
