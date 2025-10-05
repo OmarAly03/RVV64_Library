@@ -7,20 +7,23 @@ import os
 import onnx
 import onnxruntime as ort
 
+# Get the absolute path to the script's directory
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
 # =============== Import Utility Functions ===============
 from src.onnx_utils import max_abs_error, snr_db
 from src.nms_utils import load_binary_data, nms_reference_numpy
 
 # ==== Loading ONNX Model ====
-onnx_model = onnx.load("./output_files/nms.onnx")
+onnx_model = onnx.load(os.path.join(SCRIPT_DIR, "./output_files/nms.onnx"))
 onnx.checker.check_model(onnx_model)
-session = ort.InferenceSession("./output_files/nms.onnx")
+session = ort.InferenceSession(os.path.join(SCRIPT_DIR, "./output_files/nms.onnx"))
 
 def load_nms_results(filename):
     """Load NMS results from binary file"""
     results = []
     try:
-        with open(filename, 'rb') as f:
+        with open(os.path.join(SCRIPT_DIR, filename), 'rb') as f:
             count_bytes = f.read(8)
             if len(count_bytes) < 8:
                 return results
@@ -63,8 +66,8 @@ def main():
         score_threshold = 0.1
 
     # Load input data
-    boxes = load_binary_data(f"./output_files/boxes.bin", np.float32).reshape(num_batches, spatial_dimension, 4)
-    scores = load_binary_data(f"./output_files/scores.bin", np.float32).reshape(num_batches, num_classes, spatial_dimension)
+    boxes = load_binary_data(os.path.join(SCRIPT_DIR, f"./output_files/boxes.bin"), np.float32).reshape(num_batches, spatial_dimension, 4)
+    scores = load_binary_data(os.path.join(SCRIPT_DIR, f"./output_files/scores.bin"), np.float32).reshape(num_batches, num_classes, spatial_dimension)
 
     # ==== ONNX Golden Reference (using ONNXRuntime) ====
     input_names = [input.name for input in onnx_model.graph.input]

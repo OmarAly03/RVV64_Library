@@ -2,6 +2,10 @@ import numpy as np
 import onnx
 import onnxruntime as ort
 import sys
+import os
+
+# Get the absolute path to the script's directory
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # =============== Import Utility Functions ===============
 from src.onnx_utils import max_abs_error, snr_db
@@ -10,9 +14,9 @@ from src.onnx_utils import max_abs_error, snr_db
 from src.matmult import matmul_py_scalar
 
 # ==== Loading ONNX Model ====
-onnx_model = onnx.load("./output_files/matrix_multiply.onnx")
+onnx_model = onnx.load(os.path.join(SCRIPT_DIR, "./output_files/matrix_multiply.onnx"))
 onnx.checker.check_model(onnx_model)
-session = ort.InferenceSession("./output_files/matrix_multiply.onnx")
+session = ort.InferenceSession(os.path.join(SCRIPT_DIR, "./output_files/matrix_multiply.onnx"))
 
 # Default size
 M, N, K = 4, 4, 4
@@ -25,8 +29,8 @@ elif len(sys.argv) >= 4:
     K = int(sys.argv[3])
 
 # Load matrices
-A = np.fromfile("./output_files/A.bin", dtype=np.float32).reshape(M, K)
-B = np.fromfile("./output_files/B.bin", dtype=np.float32).reshape(K, N)
+A = np.fromfile(os.path.join(SCRIPT_DIR, "./output_files/A.bin"), dtype=np.float32).reshape(M, K)
+B = np.fromfile(os.path.join(SCRIPT_DIR, "./output_files/B.bin"), dtype=np.float32).reshape(K, N)
 
 print(f"\nMatrix multiplication: A({M}x{K}) @ B({K}x{N}) -> C({M}x{N})")
 print(f"Total operations: {2 * M * K * N:,} FLOPs")
@@ -42,19 +46,19 @@ py_scalar = matmul_py_scalar(A, B)
 py_numpy = np.dot(A, B)
 
 # ==== C Scalar ====
-c_scalar = np.fromfile("./output_files/c_scalar.bin", dtype=np.float32).reshape(M, N)
+c_scalar = np.fromfile(os.path.join(SCRIPT_DIR, "./output_files/c_scalar.bin"), dtype=np.float32).reshape(M, N)
 
 # ==== C Vectorized (e32m1) ====
-c_e32m1 = np.fromfile("./output_files/c_e32m1.bin", dtype=np.float32).reshape(M, N)
+c_e32m1 = np.fromfile(os.path.join(SCRIPT_DIR, "./output_files/c_e32m1.bin"), dtype=np.float32).reshape(M, N)
 
 # ==== C Vectorized (e32m2) ====
-c_e32m2 = np.fromfile("./output_files/c_e32m2.bin", dtype=np.float32).reshape(M, N)
+c_e32m2 = np.fromfile(os.path.join(SCRIPT_DIR, "./output_files/c_e32m2.bin"), dtype=np.float32).reshape(M, N)
 
 # ==== C Vectorized (e32m4) ====
-c_e32m4 = np.fromfile("./output_files/c_e32m4.bin", dtype=np.float32).reshape(M, N)
+c_e32m4 = np.fromfile(os.path.join(SCRIPT_DIR, "./output_files/c_e32m4.bin"), dtype=np.float32).reshape(M, N)
 
 # ==== C Vectorized (e32m8) ====
-c_e32m8 = np.fromfile("./output_files/c_e32m8.bin", dtype=np.float32).reshape(M, N)
+c_e32m8 = np.fromfile(os.path.join(SCRIPT_DIR, "./output_files/c_e32m8.bin"), dtype=np.float32).reshape(M, N)
 
 # ONNX --> golden reference
 c_ref = onnx_ref

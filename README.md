@@ -121,6 +121,6 @@ python3 nms/main.py <BATCHES> <CLASSES> <SPATIAL> <MAX_BOXES> <IOU_THRESH> <SCOR
 
 ## Performance Metrics
 
-Both kernels report:
+All kernels report:
 - **SNR (Signal-to-Noise Ratio):** Higher is better (∞ = perfect match)
 - **Max Absolute Error:** Lower is better (0 = perfect match)
