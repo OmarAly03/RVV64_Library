@@ -79,13 +79,13 @@ void convert_box_format(const float* box, float* converted_box, int from_format,
 }
 
 // Scalar NMS implementation for reference
-std::vector<SelectedIndex> nms_scalar(
+vector<SelectedIndex> nms_scalar(
     const float* boxes, const float* scores,
-    std::size_t num_batches, std::size_t num_classes, std::size_t spatial_dimension,
+    size_t num_batches, size_t num_classes, size_t spatial_dimension,
     int64_t max_output_boxes_per_class, float iou_threshold, float score_threshold,
     int center_point_box
 ) {
-    std::vector<SelectedIndex> selected_indices;
+    vector<SelectedIndex> selected_indices;
     
     if (max_output_boxes_per_class == 0) {
         return selected_indices;
@@ -94,7 +94,7 @@ std::vector<SelectedIndex> nms_scalar(
     for (size_t batch = 0; batch < num_batches; batch++) {
         for (size_t cls = 0; cls < num_classes; cls++) {
             // Create vector of (score, index) pairs for current batch and class
-            std::vector<std::pair<float, size_t>> score_index_pairs;
+            vector<pair<float, size_t>> score_index_pairs;
             
             // Filter scores above threshold
             for (size_t i = 0; i < spatial_dimension; i++) {
@@ -107,12 +107,12 @@ std::vector<SelectedIndex> nms_scalar(
             }
             
             // Sort by score in descending order
-            std::sort(score_index_pairs.begin(), score_index_pairs.end(),
-                      [](const std::pair<float, size_t>& a, const std::pair<float, size_t>& b) {
+            sort(score_index_pairs.begin(), score_index_pairs.end(),
+                      [](const pair<float, size_t>& a, const pair<float, size_t>& b) {
                           return a.first > b.first;
                       });
             
-            std::vector<bool> suppressed(score_index_pairs.size(), false);
+            vector<bool> suppressed(score_index_pairs.size(), false);
             int64_t selected_count = 0;
             
             // Apply NMS
@@ -145,7 +145,7 @@ std::vector<SelectedIndex> nms_scalar(
 }
 
 // Write NMS results to text file
-void write_nms_results_to_file(const char* filename, const std::vector<SelectedIndex>& results) {
+void write_nms_results_to_file(const char* filename, const vector<SelectedIndex>& results) {
     ofstream file(filename);
     if (!file.is_open()) {
         cerr << "Error: Cannot open file " << filename << " for writing." << endl;
@@ -162,7 +162,7 @@ void write_nms_results_to_file(const char* filename, const std::vector<SelectedI
 }
 
 // Write NMS results to binary file
-void write_nms_results_binary(const char* filename, const std::vector<SelectedIndex>& results) {
+void write_nms_results_binary(const char* filename, const vector<SelectedIndex>& results) {
     ofstream file(filename, ios::binary);
     if (!file.is_open()) {
         cerr << "Error: Cannot open file " << filename << " for writing." << endl;
