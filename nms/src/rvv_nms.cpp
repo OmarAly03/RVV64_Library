@@ -47,13 +47,13 @@ float compute_iou_rvv(const float* box1, const float* box2, int center_point_box
 }
 
 // NMS implementation with RVV m1
-std::vector<SelectedIndex> nms_e32m1(
+vector<SelectedIndex> nms_e32m1(
     const float* boxes, const float* scores,
-    std::size_t num_batches, std::size_t num_classes, std::size_t spatial_dimension,
+    size_t num_batches, size_t num_classes, size_t spatial_dimension,
     int64_t max_output_boxes_per_class, float iou_threshold, float score_threshold,
     int center_point_box
 ) {
-    std::vector<SelectedIndex> selected_indices;
+    vector<SelectedIndex> selected_indices;
 
     if (max_output_boxes_per_class == 0) {
         return selected_indices;
@@ -61,7 +61,7 @@ std::vector<SelectedIndex> nms_e32m1(
 
     for (size_t batch = 0; batch < num_batches; batch++) {
         for (size_t cls = 0; cls < num_classes; cls++) {
-            std::vector<std::pair<float, size_t>> score_index_pairs;
+            vector<pair<float, size_t>> score_index_pairs;
 
             for (size_t i = 0; i < spatial_dimension; i += __riscv_vsetvlmax_e32m1()) {
                 size_t vl = __riscv_vsetvl_e32m1(spatial_dimension - i);
@@ -85,12 +85,12 @@ std::vector<SelectedIndex> nms_e32m1(
                 }
             }
 
-            std::sort(score_index_pairs.begin(), score_index_pairs.end(),
-                      [](const std::pair<float, size_t>& a, const std::pair<float, size_t>& b) {
+            sort(score_index_pairs.begin(), score_index_pairs.end(),
+                      [](const pair<float, size_t>& a, const pair<float, size_t>& b) {
                           return a.first > b.first;
                       });
 
-            std::vector<bool> suppressed(score_index_pairs.size(), false);
+            vector<bool> suppressed(score_index_pairs.size(), false);
             int64_t selected_count = 0;
 
             for (size_t i = 0; i < score_index_pairs.size() && selected_count < max_output_boxes_per_class; i++) {
@@ -121,13 +121,13 @@ std::vector<SelectedIndex> nms_e32m1(
 }
 
 // NMS implementation with RVV m2
-std::vector<SelectedIndex> nms_e32m2(
+vector<SelectedIndex> nms_e32m2(
     const float* boxes, const float* scores,
-    std::size_t num_batches, std::size_t num_classes, std::size_t spatial_dimension,
+    size_t num_batches, size_t num_classes, size_t spatial_dimension,
     int64_t max_output_boxes_per_class, float iou_threshold, float score_threshold,
     int center_point_box
 ) {
-    std::vector<SelectedIndex> selected_indices;
+    vector<SelectedIndex> selected_indices;
 
     if (max_output_boxes_per_class == 0) {
         return selected_indices;
@@ -135,7 +135,7 @@ std::vector<SelectedIndex> nms_e32m2(
 
     for (size_t batch = 0; batch < num_batches; batch++) {
         for (size_t cls = 0; cls < num_classes; cls++) {
-            std::vector<std::pair<float, size_t>> score_index_pairs;
+            vector<pair<float, size_t>> score_index_pairs;
 
             for (size_t i = 0; i < spatial_dimension; i += __riscv_vsetvlmax_e32m2()) {
                 size_t vl = __riscv_vsetvl_e32m2(spatial_dimension - i);
@@ -159,12 +159,12 @@ std::vector<SelectedIndex> nms_e32m2(
                 }
             }
 
-            std::sort(score_index_pairs.begin(), score_index_pairs.end(),
-                      [](const std::pair<float, size_t>& a, const std::pair<float, size_t>& b) {
+            sort(score_index_pairs.begin(), score_index_pairs.end(),
+                      [](const pair<float, size_t>& a, const pair<float, size_t>& b) {
                           return a.first > b.first;
                       });
 
-            std::vector<bool> suppressed(score_index_pairs.size(), false);
+            vector<bool> suppressed(score_index_pairs.size(), false);
             int64_t selected_count = 0;
 
             for (size_t i = 0; i < score_index_pairs.size() && selected_count < max_output_boxes_per_class; i++) {
@@ -195,13 +195,13 @@ std::vector<SelectedIndex> nms_e32m2(
 }
 
 // NMS implementation with RVV m4
-std::vector<SelectedIndex> nms_e32m4(
+vector<SelectedIndex> nms_e32m4(
     const float* boxes, const float* scores,
-    std::size_t num_batches, std::size_t num_classes, std::size_t spatial_dimension,
+    size_t num_batches, size_t num_classes, size_t spatial_dimension,
     int64_t max_output_boxes_per_class, float iou_threshold, float score_threshold,
     int center_point_box
 ) {
-    std::vector<SelectedIndex> selected_indices;
+    vector<SelectedIndex> selected_indices;
 
     if (max_output_boxes_per_class == 0) {
         return selected_indices;
@@ -209,7 +209,7 @@ std::vector<SelectedIndex> nms_e32m4(
 
     for (size_t batch = 0; batch < num_batches; batch++) {
         for (size_t cls = 0; cls < num_classes; cls++) {
-            std::vector<std::pair<float, size_t>> score_index_pairs;
+            vector<pair<float, size_t>> score_index_pairs;
 
             for (size_t i = 0; i < spatial_dimension; i += __riscv_vsetvlmax_e32m4()) {
                 size_t vl = __riscv_vsetvl_e32m4(spatial_dimension - i);
@@ -233,12 +233,12 @@ std::vector<SelectedIndex> nms_e32m4(
                 }
             }
 
-            std::sort(score_index_pairs.begin(), score_index_pairs.end(),
-                      [](const std::pair<float, size_t>& a, const std::pair<float, size_t>& b) {
+            sort(score_index_pairs.begin(), score_index_pairs.end(),
+                      [](const pair<float, size_t>& a, const pair<float, size_t>& b) {
                           return a.first > b.first;
                       });
 
-            std::vector<bool> suppressed(score_index_pairs.size(), false);
+            vector<bool> suppressed(score_index_pairs.size(), false);
             int64_t selected_count = 0;
 
             for (size_t i = 0; i < score_index_pairs.size() && selected_count < max_output_boxes_per_class; i++) {
@@ -269,13 +269,13 @@ std::vector<SelectedIndex> nms_e32m4(
 }
 
 // NMS implementation with RVV m8
-std::vector<SelectedIndex> nms_e32m8(
+vector<SelectedIndex> nms_e32m8(
     const float* boxes, const float* scores,
-    std::size_t num_batches, std::size_t num_classes, std::size_t spatial_dimension,
+    size_t num_batches, size_t num_classes, size_t spatial_dimension,
     int64_t max_output_boxes_per_class, float iou_threshold, float score_threshold,
     int center_point_box
 ) {
-    std::vector<SelectedIndex> selected_indices;
+    vector<SelectedIndex> selected_indices;
 
     if (max_output_boxes_per_class == 0) {
         return selected_indices;
@@ -283,7 +283,7 @@ std::vector<SelectedIndex> nms_e32m8(
 
     for (size_t batch = 0; batch < num_batches; batch++) {
         for (size_t cls = 0; cls < num_classes; cls++) {
-            std::vector<std::pair<float, size_t>> score_index_pairs;
+            vector<pair<float, size_t>> score_index_pairs;
 
             for (size_t i = 0; i < spatial_dimension; i += __riscv_vsetvlmax_e32m8()) {
                 size_t vl = __riscv_vsetvl_e32m8(spatial_dimension - i);
@@ -307,12 +307,12 @@ std::vector<SelectedIndex> nms_e32m8(
                 }
             }
 
-            std::sort(score_index_pairs.begin(), score_index_pairs.end(),
-                      [](const std::pair<float, size_t>& a, const std::pair<float, size_t>& b) {
+            sort(score_index_pairs.begin(), score_index_pairs.end(),
+                      [](const pair<float, size_t>& a, const pair<float, size_t>& b) {
                           return a.first > b.first;
                       });
 
-            std::vector<bool> suppressed(score_index_pairs.size(), false);
+            vector<bool> suppressed(score_index_pairs.size(), false);
             int64_t selected_count = 0;
 
             for (size_t i = 0; i < score_index_pairs.size() && selected_count < max_output_boxes_per_class; i++) {
