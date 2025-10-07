@@ -1,3 +1,4 @@
+```bash
 Transposed Convolution: 512x512 input, 5x5 kernel
 Stride: 3, Padding: 2, Channels: 2->4
 Output: 1534x1534
