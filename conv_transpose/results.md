@@ -1,11 +1,10 @@
-```bash
-Transposed Convolution: 512x512 input, 5x5 kernel
-Stride: 3, Padding: 2, Channels: 2->4
-Output: 1534x1534
+
+Transposed Convolution: 16x16 input, 7x7 kernel
+Stride: 1, Padding: 3, Channels: 1->1
+Output: 16x16
 
 Implementation           Max Abs Error       SNR (dB)            
 ------------------------------------------------------------
 ONNX Golden Ref          0                   inf                 
-C Scalar                 7.15256e-07         143.13              
-C Vectorized (e32m1)     7.15256e-07         143.473             
-
+C Scalar                 1.43051e-06         136.177             
+C Vectorized (e32m1)     1.43051e-06         135.746             
