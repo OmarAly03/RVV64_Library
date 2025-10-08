@@ -1,6 +1,7 @@
 #include <riscv_vector.h>
 #include <cstring>
 #include "defs.h"
+#include "rvv_defs.hpp"
 
 // RVV optimized version (e32m1)
 void conv_transpose_2d_e32m1(
@@ -47,25 +48,25 @@ void conv_transpose_2d_e32m1(
                                 
                                 if (processable <= 0) break;
                                 
-                                vl = __riscv_vsetvl_e32m1(processable);
+                                vl = SET_VECTOR_LENGTH<float, M1>(processable);
                                 
                                 // Load kernel values
-                                vfloat32m1_t v_kernel = __riscv_vle32_v_f32m1(
+                                auto v_kernel = VECTOR_LOAD<float, M1>(
                                     &kernel[ic * out_channels * kernel_h * kernel_w +
                                            oc * kernel_h * kernel_w +
                                            kh * kernel_w + kw], vl);
                                 
                                 // Load current output values
-                                vfloat32m1_t v_output = __riscv_vle32_v_f32m1(
+                                auto v_output = VECTOR_LOAD<float, M1>(
                                     &output[b * out_channels * out_height * out_width +
                                            oc * out_height * out_width +
                                            out_h_idx * out_width + out_w_idx + kw], vl);
                                 
                                 // Fused multiply-add: output = output + (input_val * kernel)
-                                v_output = __riscv_vfmacc_vf_f32m1(v_output, input_val, v_kernel, vl);
+                                v_output = VECTOR_FMACC<float, M1>(v_output, input_val, v_kernel, vl);
                                 
                                 // Store back
-                                __riscv_vse32_v_f32m1(
+                                VECTOR_STORE<float, M1>(
                                     &output[b * out_channels * out_height * out_width +
                                            oc * out_height * out_width +
                                            out_h_idx * out_width + out_w_idx + kw], v_output, vl);
