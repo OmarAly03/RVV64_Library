@@ -2,4 +2,5 @@ __pycache__/
 matmul/output_files/*.bin
 relu/output_files/*.bin
 nms/output_files/*.bin
+conv_transpose/output_files/*.bin
 
