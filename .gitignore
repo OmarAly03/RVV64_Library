@@ -1,3 +1,4 @@
+.vscode/
 __pycache__/
 matmul/output_files/*.bin
 relu/output_files/*.bin
