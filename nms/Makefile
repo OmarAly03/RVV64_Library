@@ -2,7 +2,7 @@ CC = riscv64-unknown-linux-gnu-g++
 FLAGS = -march=rv64gcv -static -O2
 
 # Include directories
-INCLUDES = -Iinclude
+INCLUDES = -Iinclude -I../lib
 
 # Source files
 SRCS = run_nms.cpp src/rvv_nms.cpp src/utils.cpp
