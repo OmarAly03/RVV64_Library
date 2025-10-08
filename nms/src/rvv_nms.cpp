@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstring>
 #include "../include/defs.h"
+#include "rvv_defs.hpp"
 
 using namespace std;
 
@@ -19,27 +20,27 @@ float compute_iou_rvv(const float* box1, const float* box2, int center_point_box
     }
 
     size_t vl = 2;
-    vfloat32m1_t b1_xy1 = __riscv_vle32_v_f32m1(box1, vl);
-    vfloat32m1_t b1_xy2 = __riscv_vle32_v_f32m1(box1 + 2, vl);
+    auto b1_xy1 = VECTOR_LOAD<float, M1>(box1, vl);
+    auto b1_xy2 = VECTOR_LOAD<float, M1>(box1 + 2, vl);
 
-    vfloat32m1_t b2_xy1 = __riscv_vle32_v_f32m1(box2, vl);
-    vfloat32m1_t b2_xy2 = __riscv_vle32_v_f32m1(box2 + 2, vl);
+    auto b2_xy1 = VECTOR_LOAD<float, M1>(box2, vl);
+    auto b2_xy2 = VECTOR_LOAD<float, M1>(box2 + 2, vl);
 
-    vfloat32m1_t inter_xy1 = __riscv_vfmax_vv_f32m1(b1_xy1, b2_xy1, vl);
-    vfloat32m1_t inter_xy2 = __riscv_vfmin_vv_f32m1(b1_xy2, b2_xy2, vl);
+    auto inter_xy1 = VECTOR_MAX<float, M1>(b1_xy1, b2_xy1, vl);
+    auto inter_xy2 = VECTOR_MIN<float, M1>(b1_xy2, b2_xy2, vl);
 
-    vfloat32m1_t inter_wh = __riscv_vfsub_vv_f32m1(inter_xy2, inter_xy1, vl);
-    inter_wh = __riscv_vfmax_vf_f32m1(inter_wh, 0.0f, vl);
+    auto inter_wh = VECTOR_SUB<float, M1>(inter_xy2, inter_xy1, vl);
+    inter_wh = VECTOR_MAX<float, M1>(inter_wh, 0.0f, vl);
 
-    float inter_w = __riscv_vfmv_f_s_f32m1_f32(__riscv_vslidedown_vx_f32m1(inter_wh, 1, vl));
-    float inter_h = __riscv_vfmv_f_s_f32m1_f32(inter_wh);
+    auto inter_w = VECTOR_EXTRACT_SCALAR<float, M1>(__riscv_vslidedown_vx_f32m1(inter_wh, 1, vl));
+    auto inter_h = VECTOR_EXTRACT_SCALAR<float, M1>(inter_wh);
     float inter_area = inter_w * inter_h;
 
-    vfloat32m1_t b1_wh = __riscv_vfsub_vv_f32m1(b1_xy2, b1_xy1, vl);
-    float area1 = __riscv_vfmv_f_s_f32m1_f32(b1_wh) * __riscv_vfmv_f_s_f32m1_f32(__riscv_vslidedown_vx_f32m1(b1_wh, 1, vl));
+    auto b1_wh = VECTOR_SUB<float, M1>(b1_xy2, b1_xy1, vl);
+    auto area1 = VECTOR_EXTRACT_SCALAR<float, M1>(b1_wh) * VECTOR_EXTRACT_SCALAR<float, M1>(__riscv_vslidedown_vx_f32m1(b1_wh, 1, vl));
 
-    vfloat32m1_t b2_wh = __riscv_vfsub_vv_f32m1(b2_xy2, b2_xy1, vl);
-    float area2 = __riscv_vfmv_f_s_f32m1_f32(b2_wh) * __riscv_vfmv_f_s_f32m1_f32(__riscv_vslidedown_vx_f32m1(b2_wh, 1, vl));
+    auto b2_wh = VECTOR_SUB<float, M1>(b2_xy2, b2_xy1, vl);
+    auto area2 = VECTOR_EXTRACT_SCALAR<float, M1>(b2_wh) * VECTOR_EXTRACT_SCALAR<float, M1>(__riscv_vslidedown_vx_f32m1(b2_wh, 1, vl));
 
     float union_area = area1 + area2 - inter_area;
 
@@ -63,12 +64,12 @@ vector<SelectedIndex> nms_e32m1(
         for (size_t cls = 0; cls < num_classes; cls++) {
             vector<pair<float, size_t>> score_index_pairs;
 
-            for (size_t i = 0; i < spatial_dimension; i += __riscv_vsetvlmax_e32m1()) {
-                size_t vl = __riscv_vsetvl_e32m1(spatial_dimension - i);
+			for (size_t i = 0; i < spatial_dimension; i += __riscv_vsetvlmax_e32m1()) {
+				size_t vl = SET_VECTOR_LENGTH<float, M1>(spatial_dimension - i);
                 size_t score_idx = batch * num_classes * spatial_dimension + cls * spatial_dimension + i;
 
-                vfloat32m1_t vscores = __riscv_vle32_v_f32m1(&scores[score_idx], vl);
-                vfloat32m1_t vthreshold = __riscv_vfmv_v_f_f32m1(score_threshold, vl);
+                auto vscores = VECTOR_LOAD<float, M1>(&scores[score_idx], vl);
+                auto vthreshold = VECTOR_MOVE<float, M1>(score_threshold, vl);
                 vbool32_t mask = __riscv_vmfge_vv_f32m1_b32(vscores, vthreshold, vl);
 
                 size_t count = __riscv_vcpop_m_b32(mask, vl);
@@ -138,11 +139,11 @@ vector<SelectedIndex> nms_e32m2(
             vector<pair<float, size_t>> score_index_pairs;
 
             for (size_t i = 0; i < spatial_dimension; i += __riscv_vsetvlmax_e32m2()) {
-                size_t vl = __riscv_vsetvl_e32m2(spatial_dimension - i);
+                size_t vl = SET_VECTOR_LENGTH<float, M2>(spatial_dimension - i);
                 size_t score_idx = batch * num_classes * spatial_dimension + cls * spatial_dimension + i;
 
-                vfloat32m2_t vscores = __riscv_vle32_v_f32m2(&scores[score_idx], vl);
-                vfloat32m2_t vthreshold = __riscv_vfmv_v_f_f32m2(score_threshold, vl);
+                auto vscores = VECTOR_LOAD<float, M2>(&scores[score_idx], vl);
+                auto vthreshold = VECTOR_MOVE<float, M2>(score_threshold, vl);
                 vbool16_t mask = __riscv_vmfge_vv_f32m2_b16(vscores, vthreshold, vl);
 
                 size_t count = __riscv_vcpop_m_b16(mask, vl);
@@ -212,11 +213,11 @@ vector<SelectedIndex> nms_e32m4(
             vector<pair<float, size_t>> score_index_pairs;
 
             for (size_t i = 0; i < spatial_dimension; i += __riscv_vsetvlmax_e32m4()) {
-                size_t vl = __riscv_vsetvl_e32m4(spatial_dimension - i);
+                size_t vl = SET_VECTOR_LENGTH<float, M4>(spatial_dimension - i);
                 size_t score_idx = batch * num_classes * spatial_dimension + cls * spatial_dimension + i;
 
-                vfloat32m4_t vscores = __riscv_vle32_v_f32m4(&scores[score_idx], vl);
-                vfloat32m4_t vthreshold = __riscv_vfmv_v_f_f32m4(score_threshold, vl);
+                auto vscores = VECTOR_LOAD<float, M4>(&scores[score_idx], vl);
+                auto vthreshold = VECTOR_MOVE<float, M4>(score_threshold, vl);
                 vbool8_t mask = __riscv_vmfge_vv_f32m4_b8(vscores, vthreshold, vl);
 
                 size_t count = __riscv_vcpop_m_b8(mask, vl);
@@ -286,11 +287,11 @@ vector<SelectedIndex> nms_e32m8(
             vector<pair<float, size_t>> score_index_pairs;
 
             for (size_t i = 0; i < spatial_dimension; i += __riscv_vsetvlmax_e32m8()) {
-                size_t vl = __riscv_vsetvl_e32m8(spatial_dimension - i);
+                size_t vl = SET_VECTOR_LENGTH<float, M8>(spatial_dimension - i);
                 size_t score_idx = batch * num_classes * spatial_dimension + cls * spatial_dimension + i;
 
-                vfloat32m8_t vscores = __riscv_vle32_v_f32m8(&scores[score_idx], vl);
-                vfloat32m8_t vthreshold = __riscv_vfmv_v_f_f32m8(score_threshold, vl);
+                auto vscores = VECTOR_LOAD<float, M8>(&scores[score_idx], vl);
+                auto vthreshold = VECTOR_MOVE<float, M8>(score_threshold, vl);
                 vbool4_t mask = __riscv_vmfge_vv_f32m8_b4(vscores, vthreshold, vl);
 
                 size_t count = __riscv_vcpop_m_b4(mask, vl);
