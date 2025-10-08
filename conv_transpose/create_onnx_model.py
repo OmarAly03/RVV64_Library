@@ -56,6 +56,8 @@ def create_transposed_conv2d_model(input_shape, kernel_shape, output_channels,
     # Create model
     model = helper.make_model(graph, producer_name='onnx-transposed-conv')
     model.opset_import[0].version = 11
+    
+    model.ir_version = 7 # <-- Added this as a fix for onnx
 
     # Check model validity
     onnx.checker.check_model(model)
