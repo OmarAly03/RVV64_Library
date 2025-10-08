@@ -1,7 +1,7 @@
 .vscode/
 __pycache__/
-matmul/output_files/*.bin
-relu/output_files/*.bin
-nms/output_files/*.bin
-conv_transpose/output_files/*.bin
+matmul/output_files/*
+relu/output_files/*
+nms/output_files/*
+conv_transpose/output_files/*
 
