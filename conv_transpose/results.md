@@ -1,10 +1,10 @@
 
-Transposed Convolution: 16x16 input, 7x7 kernel
-Stride: 1, Padding: 3, Channels: 1->1
-Output: 16x16
+Transposed Convolution: 4x4 input, 3x3 kernel
+Stride: 2, Padding: 1, Channels: 1->1
+Output: 7x7
 
 Implementation           Max Abs Error       SNR (dB)            
 ------------------------------------------------------------
 ONNX Golden Ref          0                   inf                 
-C Scalar                 1.43051e-06         136.177             
-C Vectorized (e32m1)     1.43051e-06         135.746             
+C Scalar                 5.96046e-08         152.463             
+C Vectorized (e32m1)     5.96046e-08         149.386             
