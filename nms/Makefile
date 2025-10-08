@@ -25,7 +25,7 @@ $(TARGET): $(SRCS)
 	@$(CC) $(FLAGS) $(INCLUDES) -o $@ $^
 
 onnx:
-	@python3 create_onnx_model.py
+	@python3 create_onnx_model.py $(MAX_BOXES) $(IOU_THRESH) $(SCORE_THRESH)
 
 run: $(TARGET) onnx onnx
 	@qemu-riscv64 -cpu rv64,v=true $(TARGET) $(BATCHES) $(CLASSES) $(SPATIAL) $(MAX_BOXES) $(IOU_THRESH) $(SCORE_THRESH)
