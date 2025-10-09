@@ -10,11 +10,11 @@ void matmul_e32m1(float *A, float *B, float *C, size_t M, size_t N, size_t K) {
             size_t vl = SET_VECTOR_LENGTH<float, M1>(j_cnt);
             size_t j = N - j_cnt;
             
-            vfloat32m1_t acc = VECTOR_MOVE<float, M1>(0.0f, vl);
+            auto acc = VECTOR_MOVE<float, M1>(0.0f, vl);
             
             for (size_t k = 0; k < K; k++) {
-                vfloat32m1_t a_elem = VECTOR_MOVE<float, M1>(A[i * K + k], vl);
-                vfloat32m1_t b_vec = VECTOR_LOAD<float, M1>(&B[k * N + j], vl);
+                auto a_elem = VECTOR_MOVE<float, M1>(A[i * K + k], vl);
+                auto b_vec = VECTOR_LOAD<float, M1>(&B[k * N + j], vl);
                 acc = VECTOR_FMACC<float, M1>(acc, a_elem, b_vec, vl);
             }
             
@@ -31,11 +31,11 @@ void matmul_e32m2(float *A, float *B, float *C, size_t M, size_t N, size_t K) {
 			size_t vl = SET_VECTOR_LENGTH<float, M2>(j_cnt);
 			size_t j = N - j_cnt;
 			
-			vfloat32m2_t acc = VECTOR_MOVE<float, M2>(0.0f, vl);
+			auto acc = VECTOR_MOVE<float, M2>(0.0f, vl);
 			
 			for (size_t k = 0; k < K; k++) {
-				vfloat32m2_t a_elem = VECTOR_MOVE<float, M2>(A[i * K + k], vl);
-				vfloat32m2_t b_vec = VECTOR_LOAD<float, M2>(&B[k * N + j], vl);
+				auto a_elem = VECTOR_MOVE<float, M2>(A[i * K + k], vl);
+				auto b_vec = VECTOR_LOAD<float, M2>(&B[k * N + j], vl);
 				acc = VECTOR_FMACC<float, M2>(acc, a_elem, b_vec, vl);
 			}
 			
@@ -52,11 +52,11 @@ void matmul_e32m4(float *A, float *B, float *C, size_t M, size_t N, size_t K) {
 			size_t vl = SET_VECTOR_LENGTH<float, M4>(j_cnt);
 			size_t j = N - j_cnt;
 			
-			vfloat32m4_t acc = VECTOR_MOVE<float, M4>(0.0f, vl);
+			auto acc = VECTOR_MOVE<float, M4>(0.0f, vl);
 			
 			for (size_t k = 0; k < K; k++) {
-				vfloat32m4_t a_elem = VECTOR_MOVE<float, M4>(A[i * K + k], vl);
-				vfloat32m4_t b_vec = VECTOR_LOAD<float, M4>(&B[k * N + j], vl);
+				auto a_elem = VECTOR_MOVE<float, M4>(A[i * K + k], vl);
+				auto b_vec = VECTOR_LOAD<float, M4>(&B[k * N + j], vl);
 				acc = VECTOR_FMACC<float, M4>(acc, a_elem, b_vec, vl);
 			}
 			
@@ -73,11 +73,11 @@ void matmul_e32m8(float *A, float *B, float *C, size_t M, size_t N, size_t K) {
 			size_t vl = SET_VECTOR_LENGTH<float, M8>(j_cnt);
 			size_t j = N - j_cnt;
 			
-			vfloat32m8_t acc = VECTOR_MOVE<float, M8>(0.0f, vl);
+			auto acc = VECTOR_MOVE<float, M8>(0.0f, vl);
 			
 			for (size_t k = 0; k < K; k++) {
-				vfloat32m8_t a_elem = VECTOR_MOVE<float, M8>(A[i * K + k], vl);
-				vfloat32m8_t b_vec = VECTOR_LOAD<float, M8>(&B[k * N + j], vl);
+				auto a_elem = VECTOR_MOVE<float, M8>(A[i * K + k], vl);
+				auto b_vec = VECTOR_LOAD<float, M8>(&B[k * N + j], vl);
 				acc = VECTOR_FMACC<float, M8>(acc, a_elem, b_vec, vl);
 			}
 			
