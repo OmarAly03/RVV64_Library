@@ -1,13 +1,3 @@
-.vscode/
-__pycache__/
-matmul/output_files/*
-matmul/src/__pycache__/
-relu/output_files/*
-nms/output_files/*
-conv_transpose/output_files/*
-
-# Ignore Python virtual environments
-.venv/
-
-# Ignore compiled binaries and data files
-*.bin
+*.csv
+*.o
+*.vmem
