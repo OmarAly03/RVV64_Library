@@ -2,7 +2,7 @@
 extern "C" {
 	#include <uart.h>
 }
-#include "defs.h"
+#include "defs_matmul.h"
 
 int main(){
 	size_t M, N, K; // defaults
