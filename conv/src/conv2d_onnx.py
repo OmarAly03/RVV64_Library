@@ -1,6 +1,12 @@
+import os
 import onnx
 from onnx import helper, TensorProto
 import numpy as np
+import onnxruntime as ort
+
+# Create output directory if it doesn't exist
+output_dir = "./conv/output_files"
+os.makedirs(output_dir, exist_ok=True)
 
 # Input tensor: [N, C_in, H, W] - batch, input channels, height, width
 input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, [None, None, None, None])
@@ -59,5 +65,33 @@ model = helper.make_model(
 model.ir_version = 7
 
 # Save model
-onnx.save(model, "./conv/output_files/convolution.onnx")
-print("Saved convolution.onnx")
+model_path = os.path.join(output_dir, "convolution.onnx")
+onnx.save(model, model_path)
+print(f"✅ ONNX model saved to: {model_path}")
+
+# Test the ONNX model
+print("\nTesting ONNX model execution:")
+
+try:
+    # Load and run ONNX model
+    ort_session = ort.InferenceSession(model_path)
+    
+    # Create test input
+    test_input = np.random.randn(1, 3, 8, 8).astype(np.float32)
+    
+    # Run inference
+    ort_inputs = {ort_session.get_inputs()[0].name: test_input}
+    ort_output = ort_session.run(None, ort_inputs)[0]
+    
+    print(f"Input shape: {test_input.shape}")
+    print(f"Output shape: {ort_output.shape}")
+    print(f"Output statistics:")
+    print(f"  Mean: {np.mean(ort_output):.6f}")
+    print(f"  Std:  {np.std(ort_output):.6f}")
+    print(f"  Min:  {np.min(ort_output):.6f}")
+    print(f"  Max:  {np.max(ort_output):.6f}")
+    
+    print("✅ ONNX model executed successfully")
+    
+except Exception as e:
+    print(f"❌ Error running ONNX model: {e}")
