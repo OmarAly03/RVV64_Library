@@ -1,10 +1,13 @@
 .PHONY: all compile save run
 
 CORE_PATH = ../../core/vicuna
+
+OBJS = "main.o src/rvv_matmul.o"
+
 all: compile save run
 
 compile:
-	make -f $(CORE_PATH)/sw/Makefile PROG=main OBJ="main.o src/rvv_matmul.o" COMPILER=gcc
+	make -f $(CORE_PATH)/sw/Makefile PROG=main OBJ=$(OBJS) COMPILER=gcc
 
 save:
 	@echo "main.vmem" > progs.txt
