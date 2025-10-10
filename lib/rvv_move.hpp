@@ -344,14 +344,18 @@ inline auto VECTOR_SPLAT(T scalar, size_t vl) {
     }
 }
 
-// Unified VECTOR_MOVE template that handles both cases
+// Universal VECTOR_MOVE template that auto-detects vector vs scalar
 template<typename T, int LMUL, typename SrcType>
 inline auto VECTOR_MOVE(SrcType src, size_t vl) {
-    // If src is a scalar type, broadcast it
+    // If SrcType is a scalar type (same as T), use broadcast
     if constexpr (std::is_same_v<SrcType, T>) {
         return VECTOR_BROADCAST<T, LMUL>(src, vl);
     }
-    // Otherwise, treat as vector-to-vector copy
+    // If SrcType is an arithmetic type but different from T, still broadcast
+    else if constexpr (std::is_arithmetic_v<SrcType>) {
+        return VECTOR_BROADCAST<T, LMUL>(static_cast<T>(src), vl);
+    }
+    // Otherwise, assume it's a vector type and use copy
     else {
         return VECTOR_COPY<T, LMUL>(src, vl);
     }
