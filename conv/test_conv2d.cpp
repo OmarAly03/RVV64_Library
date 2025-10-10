@@ -5,8 +5,11 @@
 #include <chrono>
 #include <random>
 #include <iomanip>
-#include "defs.h"
+#include "./include/defs.h"
 
+//////////////////////////////
+// NOT NEEDED / NOT WORKING //
+//////////////////////////////
 
 // Helper function to initialize data with random values
 void initialize_data(float* data, int size, float min_val = -1.0f, float max_val = 1.0f) {
