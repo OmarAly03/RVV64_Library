@@ -23,15 +23,31 @@ int main(){
     uart_printf("==== Beginning MaxPool Benchmarking ====\n");
     uart_printf("Input: [%d,%d,%d,%d], Kernel: %dx%d, Stride: %d\n", N, C, H, W, K, K, S);
     uart_printf("Output: [%d,%d,%d,%d] (size: %d)\n", N, C, OH, OW, output_size);
-    uart_printf("Total memory: %d bytes\n", (input_size + 2*output_size) * 4);
+    uart_printf("Total memory: %d bytes\n", (input_size + 10*output_size) * 4);
     uart_printf("=========================================\n\n");
 
-    // Static arrays
+    // Static arrays - input
     static int32_t input[1024];           // N*C*H*W = 1*4*16*16 = 1024
-    static int32_t output_values[196];    // N*C*OH*OW = 1*4*7*7 = 196  
-    static int32_t output_indices[196];   // Same size as output_values
-    static int32_t scalar_values[196];    // For verification
-    static int32_t scalar_indices[196];   // For verification
+    
+    // Static arrays - scalar reference
+    static int32_t scalar_values[196];    // N*C*OH*OW = 1*4*7*7 = 196  
+    static int64_t scalar_indices[196];   // Same size as output_values
+    
+    // Static arrays - M1 outputs
+    static int32_t m1_values[196];
+    static int64_t m1_indices[196];
+    
+    // Static arrays - M2 outputs
+    static int32_t m2_values[196];
+    static int64_t m2_indices[196];
+    
+    // Static arrays - M4 outputs
+    static int32_t m4_values[196];
+    static int64_t m4_indices[196];
+    
+    // Static arrays - M8 outputs
+    static int32_t m8_values[196];
+    static int64_t m8_indices[196];
 
     size_t start, end;
 
@@ -47,61 +63,143 @@ int main(){
     // --- SCALAR IMPLEMENTATION ---
     uart_printf("Testing scalar implementation...\n");
     start = read_mcycle();
-    maxpool_scalar(input, output_values, output_indices, N, C, H, W, K, S, ceil_mode);
+    maxpool_scalar(input, scalar_values, scalar_indices, N, C, H, W, K, S, ceil_mode);
     end = read_mcycle();
     size_t scalar_cycles = end - start;
     uart_printf("MaxPool scalar time: %d cycles\n", scalar_cycles);
-    
-    // Save scalar results for verification
-    for (size_t i = 0; i < output_size; i++) {
-        scalar_values[i] = output_values[i];
-        scalar_indices[i] = output_indices[i];
-    }
 
     // --- VECTOR IMPLEMENTATION M1 ---
     uart_printf("Testing vector e32m1 implementation...\n");
-    // Clear output arrays
-    for (size_t i = 0; i < output_size; i++) {
-        output_values[i] = 0;
-        output_indices[i] = 0;
-    }
-    
     start = read_mcycle();
-    maxpool_e32m1(input, output_values, output_indices, N, C, H, W, K, S, ceil_mode);
+    maxpool_e32m1(input, m1_values, m1_indices, N, C, H, W, K, S, ceil_mode);
     end = read_mcycle();
-    size_t vector_cycles = end - start;
-    uart_printf("MaxPool e32m1 time: %d cycles\n", vector_cycles);
+    size_t m1_cycles = end - start;
+    uart_printf("MaxPool e32m1 time: %d cycles\n", m1_cycles);
     
-    // Verify results
+    // Verify M1 results
     bool m1_correct = true;
-    size_t errors = 0;
+    size_t m1_errors = 0;
     for (size_t i = 0; i < output_size; i++) {
-        if (output_values[i] != scalar_values[i] || output_indices[i] != scalar_indices[i]) {
+        if (m1_values[i] != scalar_values[i] || m1_indices[i] != scalar_indices[i]) {
             m1_correct = false;
-            errors++;
-            if (errors <= 5) { // Show first 5 errors only
+            m1_errors++;
+            if (m1_errors <= 5) { // Show first 5 errors only
                 uart_printf("Mismatch at index %d: scalar_val=%d, m1_val=%d, scalar_idx=%d, m1_idx=%d\n", 
-                           i, scalar_values[i], output_values[i], scalar_indices[i], output_indices[i]);
+                    i, scalar_values[i], m1_values[i], (int)scalar_indices[i], (int)m1_indices[i]);
             }
         }
     }
     
-    if (errors > 5) {
-        uart_printf("... and %d more errors\n", errors - 5);
+    if (m1_errors > 5) {
+        uart_printf("... and %d more errors\n", m1_errors - 5);
     }
     
     uart_printf("M1 results: %s (%d/%d correct)\n", 
                m1_correct ? "CORRECT" : "INCORRECT", 
-               output_size - errors, output_size);
+               output_size - m1_errors, output_size);
+
+    // --- VECTOR IMPLEMENTATION M2 ---
+    uart_printf("Testing vector e32m2 implementation...\n");
+    start = read_mcycle();
+    maxpool_e32m2(input, m2_values, m2_indices, N, C, H, W, K, S, ceil_mode);
+    end = read_mcycle();
+    size_t m2_cycles = end - start;
+    uart_printf("MaxPool e32m2 time: %d cycles\n", m2_cycles);
+    
+    // Verify M2 results
+    bool m2_correct = true;
+    size_t m2_errors = 0;
+    for (size_t i = 0; i < output_size; i++) {
+        if (m2_values[i] != scalar_values[i] || m2_indices[i] != scalar_indices[i]) {
+            m2_correct = false;
+            m2_errors++;
+            if (m2_errors <= 5) { // Show first 5 errors only
+                uart_printf("Mismatch at index %d: scalar_val=%d, m2_val=%d, scalar_idx=%d, m2_idx=%d\n", 
+                    i, scalar_values[i], m2_values[i], (int)scalar_indices[i], (int)m2_indices[i]);
+            }
+        }
+    }
+    
+    if (m2_errors > 5) {
+        uart_printf("... and %d more errors\n", m2_errors - 5);
+    }
+    
+    uart_printf("M2 results: %s (%d/%d correct)\n", 
+               m2_correct ? "CORRECT" : "INCORRECT", 
+               output_size - m2_errors, output_size);
+
+    // --- VECTOR IMPLEMENTATION M4 ---
+    uart_printf("Testing vector e32m4 implementation...\n");
+    start = read_mcycle();
+    maxpool_e32m4(input, m4_values, m4_indices, N, C, H, W, K, S, ceil_mode);
+    end = read_mcycle();
+    size_t m4_cycles = end - start;
+    uart_printf("MaxPool e32m4 time: %d cycles\n", m4_cycles);
+    
+    // Verify M4 results
+    bool m4_correct = true;
+    size_t m4_errors = 0;
+    for (size_t i = 0; i < output_size; i++) {
+        if (m4_values[i] != scalar_values[i] || m4_indices[i] != scalar_indices[i]) {
+            m4_correct = false;
+            m4_errors++;
+            if (m4_errors <= 5) { // Show first 5 errors only
+                uart_printf("Mismatch at index %d: scalar_val=%d, m4_val=%d, scalar_idx=%d, m4_idx=%d\n", 
+                    i, scalar_values[i], m4_values[i], (int)scalar_indices[i], (int)m4_indices[i]);
+            }
+        }
+    }
+    
+    if (m4_errors > 5) {
+        uart_printf("... and %d more errors\n", m4_errors - 5);
+    }
+    
+    uart_printf("M4 results: %s (%d/%d correct)\n", 
+               m4_correct ? "CORRECT" : "INCORRECT", 
+               output_size - m4_errors, output_size);
+
+    // --- VECTOR IMPLEMENTATION M8 ---
+    uart_printf("Testing vector e32m8 implementation...\n");
+    start = read_mcycle();
+    maxpool_e32m8(input, m8_values, m8_indices, N, C, H, W, K, S, ceil_mode);
+    end = read_mcycle();
+    size_t m8_cycles = end - start;
+    uart_printf("MaxPool e32m8 time: %d cycles\n", m8_cycles);
+    
+    // Verify M8 results
+    bool m8_correct = true;
+    size_t m8_errors = 0;
+    for (size_t i = 0; i < output_size; i++) {
+        if (m8_values[i] != scalar_values[i] || m8_indices[i] != scalar_indices[i]) {
+            m8_correct = false;
+            m8_errors++;
+            if (m8_errors <= 5) { // Show first 5 errors only
+                uart_printf("Mismatch at index %d: scalar_val=%d, m8_val=%d, scalar_idx=%d, m8_idx=%d\n", 
+                    i, scalar_values[i], m8_values[i], (int)scalar_indices[i], (int)m8_indices[i]);
+            }
+        }
+    }
+    
+    if (m8_errors > 5) {
+        uart_printf("... and %d more errors\n", m8_errors - 5);
+    }
+    
+    uart_printf("M8 results: %s (%d/%d correct)\n", 
+               m8_correct ? "CORRECT" : "INCORRECT", 
+               output_size - m8_errors, output_size);
 
     // Print some sample outputs for verification
     uart_printf("\nSample outputs (first 8):\n");
-    uart_printf("Index | Scalar Val/Idx | Vector Val/Idx\n");
-    uart_printf("------|----------------|---------------\n");
+    uart_printf("Index | Scalar Val/Idx | M1 Val/Idx | M2 Val/Idx | M4 Val/Idx | M8 Val/Idx\n");
+    uart_printf("------|----------------|------------|------------|------------|------------\n");
     for (size_t i = 0; i < 8 && i < output_size; i++) {
-        uart_printf("  %2d  |   %3d / %3d   |   %3d / %3d\n", 
-                   i, scalar_values[i], scalar_indices[i], 
-                   output_values[i], output_indices[i]);
+        uart_printf("  %2d  |   %3d / %3d   |  %3d / %3d |  %3d / %3d |  %3d / %3d |  %3d / %3d\n", 
+            i, 
+            scalar_values[i], (int)scalar_indices[i],
+            m1_values[i], (int)m1_indices[i], 
+            m2_values[i], (int)m2_indices[i],
+            m4_values[i], (int)m4_indices[i],
+            m8_values[i], (int)m8_indices[i]);
     }
 
     // Performance summary
@@ -110,14 +208,62 @@ int main(){
     uart_printf("Output size: %d elements (%d bytes)\n", output_size, output_size * 4);
     uart_printf("Kernel: %dx%d, Stride: %d\n", K, K, S);
     uart_printf("Scalar cycles: %d\n", scalar_cycles);
-    uart_printf("Vector cycles: %d\n", vector_cycles);
     
-    if (m1_correct && vector_cycles > 0) {
-        uart_printf("Speedup: %.2fx\n", (float)scalar_cycles / (float)vector_cycles);
-        uart_printf("Efficiency: %s\n", vector_cycles < scalar_cycles ? "GOOD" : "NEEDS OPTIMIZATION");
+    uart_printf("Vector M1 cycles: %d \n", m1_cycles);
+    if (m1_correct && m1_cycles > 0) {
+        uart_printf(" (%.2fx speedup)", (float)scalar_cycles / (float)m1_cycles);
     } else if (!m1_correct) {
-        uart_printf("Cannot calculate speedup - vector implementation has errors\n");
+        uart_printf(" (INCORRECT)");
     }
+    uart_printf("\n");
+    
+    uart_printf("Vector M2 cycles: %d", m2_cycles);
+    if (m2_correct && m2_cycles > 0) {
+        uart_printf(" (%.2fx speedup)", (float)scalar_cycles / (float)m2_cycles);
+    } else if (!m2_correct) {
+        uart_printf(" (INCORRECT)");
+    }
+    uart_printf("\n");
+    
+    uart_printf("Vector M4 cycles: %d", m4_cycles);
+    if (m4_correct && m4_cycles > 0) {
+        uart_printf(" (%.2fx speedup)", (float)scalar_cycles / (float)m4_cycles);
+    } else if (!m4_correct) {
+        uart_printf(" (INCORRECT)");
+    }
+    uart_printf("\n");
+    
+    uart_printf("Vector M8 cycles: %d", m8_cycles);
+    if (m8_correct && m8_cycles > 0) {
+        uart_printf(" (%.2fx speedup)", (float)scalar_cycles / (float)m8_cycles);
+    } else if (!m8_correct) {
+        uart_printf(" (INCORRECT)");
+    }
+    uart_printf("\n");
+    
+    // Determine best implementation
+    size_t best_cycles = scalar_cycles;
+    const char* best_impl = "scalar";
+    
+    if (m1_correct && m1_cycles < best_cycles) {
+        best_cycles = m1_cycles;
+        best_impl = "M1";
+    }
+    if (m2_correct && m2_cycles < best_cycles) {
+        best_cycles = m2_cycles;
+        best_impl = "M2";
+    }
+    if (m4_correct && m4_cycles < best_cycles) {
+        best_cycles = m4_cycles;
+        best_impl = "M4";
+    }
+    if (m8_correct && m8_cycles < best_cycles) {
+        best_cycles = m8_cycles;
+        best_impl = "M8";
+    }
+    
+    uart_printf("\nBest implementation: %s (%d cycles, %.2fx speedup)\n", 
+               best_impl, best_cycles, (float)scalar_cycles / (float)best_cycles);
     
     uart_printf("==============================\n");
 
