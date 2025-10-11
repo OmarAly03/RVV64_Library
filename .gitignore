@@ -3,3 +3,4 @@
 *.vmem
 *.elf
 core/vicuna
+.vscode/
