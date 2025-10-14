@@ -4,7 +4,7 @@ HOST_CC = g++
 HOST_FLAGS = -O2
 
 # Include directories
-INCLUDES = -Iinclude
+INCLUDES = -Iinclude -I../lib
 
 # Source files
 SRCS = run_conv_transpose.cpp src/rvv_conv_transpose.cpp src/conv_transpose_scalar.cpp src/utils.cpp
