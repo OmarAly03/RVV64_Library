@@ -7,6 +7,8 @@
 #include "rvv_vector_store.hpp"
 #include "rvv_minmax.hpp"
 #include "rvv_macc.hpp"
+#include "rvv_arithmetic.hpp"
+#include "rvv_int_comparison.hpp"
 
 #endif // RVV_DEFS_HPP
 
