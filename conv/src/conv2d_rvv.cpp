@@ -358,47 +358,6 @@ void conv2d_e32m8(
 }
 
 
-// Simple scalar implementation for testing
-void conv2d_scalar(
-    const float* input, const float* kernel, float* output,
-    int batch_size, int in_channels, int out_channels,
-    int input_h, int input_w, int kernel_h, int kernel_w,
-    int stride_h, int stride_w, int pad_h, int pad_w) {
-    
-    int out_height = (input_h + 2 * pad_h - kernel_h) / stride_h + 1;
-    int out_width = (input_w + 2 * pad_w - kernel_w) / stride_w + 1;
-    
-    std::memset(output, 0, batch_size * out_channels * out_height * out_width * sizeof(float));
-    
-    for (int b = 0; b < batch_size; ++b) {
-        for (int oc = 0; oc < out_channels; ++oc) {
-            for (int oh = 0; oh < out_height; ++oh) {
-                for (int ow = 0; ow < out_width; ++ow) {
-                    float sum = 0.0f;
-                    for (int ic = 0; ic < in_channels; ++ic) {
-                        for (int kh = 0; kh < kernel_h; ++kh) {
-                            for (int kw = 0; kw < kernel_w; ++kw) {
-                                int in_h = oh * stride_h - pad_h + kh;
-                                int in_w = ow * stride_w - pad_w + kw;
-                                
-                                if (in_h >= 0 && in_h < input_h && in_w >= 0 && in_w < input_w) {
-                                    float input_val = input[b * in_channels * input_h * input_w +
-                                                           ic * input_h * input_w + in_h * input_w + in_w];
-                                    float kernel_val = kernel[oc * in_channels * kernel_h * kernel_w +
-                                                             ic * kernel_h * kernel_w + kh * kernel_w + kw];
-                                    sum += input_val * kernel_val;
-                                }
-                            }
-                        }
-                    }
-                    output[b * out_channels * out_height * out_width +
-                           oc * out_height * out_width + oh * out_width + ow] = sum;
-                }
-            }
-        }
-    }
-}
-
 int main() {
     std::cout << "=== RVV Conv2D Test ===" << std::endl;
     
