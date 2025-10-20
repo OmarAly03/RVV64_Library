@@ -32,15 +32,15 @@ float compute_iou_rvv(const float* box1, const float* box2, int center_point_box
     auto inter_wh = VECTOR_SUB<float, M1>(inter_xy2, inter_xy1, vl);
     inter_wh = VECTOR_MAX<float, M1>(inter_wh, 0.0f, vl);
 
-    auto inter_w = VECTOR_EXTRACT_SCALAR<float, M1>(__riscv_vslidedown_vx_f32m1(inter_wh, 1, vl));
+    auto inter_w = VECTOR_EXTRACT_SCALAR<float, M1>(VECTOR_SLIDEDOWN<float, M1>(inter_wh, 1, vl));
     auto inter_h = VECTOR_EXTRACT_SCALAR<float, M1>(inter_wh);
     float inter_area = inter_w * inter_h;
 
     auto b1_wh = VECTOR_SUB<float, M1>(b1_xy2, b1_xy1, vl);
-    auto area1 = VECTOR_EXTRACT_SCALAR<float, M1>(b1_wh) * VECTOR_EXTRACT_SCALAR<float, M1>(__riscv_vslidedown_vx_f32m1(b1_wh, 1, vl));
+    auto area1 = VECTOR_EXTRACT_SCALAR<float, M1>(b1_wh) * VECTOR_EXTRACT_SCALAR<float, M1>(VECTOR_SLIDEDOWN<float, M1>(b1_wh, 1, vl));
 
     auto b2_wh = VECTOR_SUB<float, M1>(b2_xy2, b2_xy1, vl);
-    auto area2 = VECTOR_EXTRACT_SCALAR<float, M1>(b2_wh) * VECTOR_EXTRACT_SCALAR<float, M1>(__riscv_vslidedown_vx_f32m1(b2_wh, 1, vl));
+    auto area2 = VECTOR_EXTRACT_SCALAR<float, M1>(b2_wh) * VECTOR_EXTRACT_SCALAR<float, M1>(VECTOR_SLIDEDOWN<float, M1>(b2_wh, 1, vl));
 
     float union_area = area1 + area2 - inter_area;
 
@@ -64,17 +64,17 @@ vector<SelectedIndex> nms_e32m1(
         for (size_t cls = 0; cls < num_classes; cls++) {
             vector<pair<float, size_t>> score_index_pairs;
 
-			for (size_t i = 0; i < spatial_dimension; i += __riscv_vsetvlmax_e32m1()) {
+			for (size_t i = 0; i < spatial_dimension; i += SET_VECTOR_LENGTH_MAX<float, M1>()) {
 				size_t vl = SET_VECTOR_LENGTH<float, M1>(spatial_dimension - i);
                 size_t score_idx = batch * num_classes * spatial_dimension + cls * spatial_dimension + i;
 
                 auto vscores = VECTOR_LOAD<float, M1>(&scores[score_idx], vl);
                 auto vthreshold = VECTOR_MOVE<float, M1>(score_threshold, vl);
-                vbool32_t mask = __riscv_vmfge_vv_f32m1_b32(vscores, vthreshold, vl);
+                auto mask = VECTOR_GE<float, M1>(vscores, vthreshold, vl);
 
-                size_t count = __riscv_vcpop_m_b32(mask, vl);
+                size_t count = VECTOR_COUNT_POP(mask, vl);
                 if (count > 0) {
-                    vuint32m1_t all_indices = __riscv_vid_v_u32m1(vl);
+                    auto all_indices = VECTOR_VID<uint32_t, M1>(vl);
                     vuint32m1_t selected_indices_vec = __riscv_vcompress_vm_u32m1(all_indices, mask, vl);
                     uint32_t* indices_arr = new uint32_t[count];
                     __riscv_vse32_v_u32m1(indices_arr, selected_indices_vec, count);

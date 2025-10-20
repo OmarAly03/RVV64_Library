@@ -9,6 +9,9 @@
 #include "rvv_macc.hpp"
 #include "rvv_arithmetic.hpp"
 #include "rvv_int_comparison.hpp"
+#include "rvv_slidedown.hpp"
+#include "rvv_count_pop.hpp"
+#include "rvv_vid.hpp"
 
 #endif // RVV_DEFS_HPP
 
