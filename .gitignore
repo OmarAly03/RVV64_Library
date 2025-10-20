@@ -1,12 +1,8 @@
 .vscode/
 **/__pycache__/
-matmul/output_files/*
-relu/output_files/*
-nms/output_files/*
-conv_transpose/output_files/*
+**/output_files/*
+!**/output_files/.gitkeep
 
 # Ignore Python virtual environments
 .venv/
 
-# Ignore compiled binaries and data files
-*.bin
