@@ -6,7 +6,7 @@ using namespace std;
 
 int main(int argc, char* argv[]) {
     // --- HANDLE ARGUMENTS ---
-    size_t N = 16; // default size for ReLU input
+    size_t N = 16; 
     if (argc == 2) {
         int size = atoi(argv[1]);
         if (size > 0) {
@@ -40,27 +40,40 @@ int main(int argc, char* argv[]) {
     // Write input data
     write_matrix_binary("./output_files/input.bin", in, N);
 
-    // --- RUN RELU IMPLEMENTATIONS ---
-    
-    // Scalar ReLU
+	size_t tile = 32;
+
+    /***** Scalar ReLU *****/
     relu_scalar(in, out, N);
     write_matrix_binary("./output_files/relu_scalar.bin", out, N);
 
-    // ReLU e32m1
+	relu_tiled_scalar(in, out, N, tile);
+    write_matrix_binary("./output_files/relu_tiled_scalar.bin", out, N);
+
+    /***** ReLU Tiled e32mx *****/
     relu_e32m1(in, out, N);
     write_matrix_binary("./output_files/relu_e32m1.bin", out, N);
 
-    // ReLU e32m2
     relu_e32m2(in, out, N);
     write_matrix_binary("./output_files/relu_e32m2.bin", out, N);
 
-    // ReLU e32m4
     relu_e32m4(in, out, N);
     write_matrix_binary("./output_files/relu_e32m4.bin", out, N);
 
-    // ReLU e32m8
     relu_e32m8(in, out, N);
     write_matrix_binary("./output_files/relu_e32m8.bin", out, N);
+
+	/***** ReLU Tiled Vectorized e32mx *****/
+	relu_tiled_e32m1(in, out, N, tile);
+	write_matrix_binary("./output_files/relu_tiled_e32m1.bin", out, N);
+
+	relu_tiled_e32m2(in, out, N, tile);
+	write_matrix_binary("./output_files/relu_tiled_e32m2.bin", out, N);
+
+	relu_tiled_e32m4(in, out, N, tile);
+	write_matrix_binary("./output_files/relu_tiled_e32m4.bin", out, N);
+
+	relu_tiled_e32m8(in, out, N, tile);
+	write_matrix_binary("./output_files/relu_tiled_e32m8.bin", out, N);
 
     // --- CLEANUP ---
     delete[] in;
