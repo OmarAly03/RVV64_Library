@@ -14,12 +14,13 @@ SIZE ?= 16
 
 $(TARGET): $(SRCS)
 	@$(CC) $(FLAGS) $(INCLUDES) -o $@ $^
+	@python3 src/onnx_relu.py
 
 run:
 	@qemu-riscv64 -cpu rv64,v=true $(TARGET) $(SIZE)
 	@python3 main.py $(SIZE)
 
 clean:
-	rm -f $(TARGET)
+	rm -f output_files/*
 
 .PHONY: run clean
