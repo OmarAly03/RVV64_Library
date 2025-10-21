@@ -12,6 +12,7 @@
 #include "rvv_slidedown.hpp"
 #include "rvv_count_pop.hpp"
 #include "rvv_vid.hpp"
+#include "rvv_compress.hpp"
 
 #endif // RVV_DEFS_HPP
 
