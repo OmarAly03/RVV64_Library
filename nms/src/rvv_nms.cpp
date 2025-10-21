@@ -138,20 +138,20 @@ vector<SelectedIndex> nms_e32m2(
         for (size_t cls = 0; cls < num_classes; cls++) {
             vector<pair<float, size_t>> score_index_pairs;
 
-            for (size_t i = 0; i < spatial_dimension; i += __riscv_vsetvlmax_e32m2()) {
-                size_t vl = SET_VECTOR_LENGTH<float, M2>(spatial_dimension - i);
+			for (size_t i = 0; i < spatial_dimension; i += SET_VECTOR_LENGTH_MAX<float, M2>()) {
+				size_t vl = SET_VECTOR_LENGTH<float, M2>(spatial_dimension - i);
                 size_t score_idx = batch * num_classes * spatial_dimension + cls * spatial_dimension + i;
 
                 auto vscores = VECTOR_LOAD<float, M2>(&scores[score_idx], vl);
                 auto vthreshold = VECTOR_MOVE<float, M2>(score_threshold, vl);
-                vbool16_t mask = __riscv_vmfge_vv_f32m2_b16(vscores, vthreshold, vl);
+                auto mask = VECTOR_GE<float, M2>(vscores, vthreshold, vl);
 
-                size_t count = __riscv_vcpop_m_b16(mask, vl);
+                size_t count = VECTOR_COUNT_POP(mask, vl);
                 if (count > 0) {
-                    vuint32m2_t all_indices = __riscv_vid_v_u32m2(vl);
-                    vuint32m2_t selected_indices_vec = __riscv_vcompress_vm_u32m2(all_indices, mask, vl);
+                    auto all_indices = VECTOR_VID<uint32_t, M2>(vl);
+                    auto selected_indices_vec = VECTOR_COMPRESS<uint32_t, M2>(all_indices, mask, vl);
                     uint32_t* indices_arr = new uint32_t[count];
-                    __riscv_vse32_v_u32m2(indices_arr, selected_indices_vec, count);
+                    VECTOR_STORE<uint32_t, M2>(indices_arr, selected_indices_vec, count);
                     for (size_t k = 0; k < count; k++) {
                         size_t j = indices_arr[k];
                         score_index_pairs.push_back({scores[score_idx + j], i + j});
@@ -212,20 +212,20 @@ vector<SelectedIndex> nms_e32m4(
         for (size_t cls = 0; cls < num_classes; cls++) {
             vector<pair<float, size_t>> score_index_pairs;
 
-            for (size_t i = 0; i < spatial_dimension; i += __riscv_vsetvlmax_e32m4()) {
-                size_t vl = SET_VECTOR_LENGTH<float, M4>(spatial_dimension - i);
+			for (size_t i = 0; i < spatial_dimension; i += SET_VECTOR_LENGTH_MAX<float, M4>()) {
+				size_t vl = SET_VECTOR_LENGTH<float, M4>(spatial_dimension - i);
                 size_t score_idx = batch * num_classes * spatial_dimension + cls * spatial_dimension + i;
 
                 auto vscores = VECTOR_LOAD<float, M4>(&scores[score_idx], vl);
                 auto vthreshold = VECTOR_MOVE<float, M4>(score_threshold, vl);
-                vbool8_t mask = __riscv_vmfge_vv_f32m4_b8(vscores, vthreshold, vl);
+                auto mask = VECTOR_GE<float, M4>(vscores, vthreshold, vl);
 
-                size_t count = __riscv_vcpop_m_b8(mask, vl);
+                size_t count = VECTOR_COUNT_POP(mask, vl);
                 if (count > 0) {
-                    vuint32m4_t all_indices = __riscv_vid_v_u32m4(vl);
-                    vuint32m4_t selected_indices_vec = __riscv_vcompress_vm_u32m4(all_indices, mask, vl);
+                    auto all_indices = VECTOR_VID<uint32_t, M4>(vl);
+                    auto selected_indices_vec = VECTOR_COMPRESS<uint32_t, M4>(all_indices, mask, vl);
                     uint32_t* indices_arr = new uint32_t[count];
-                    __riscv_vse32_v_u32m4(indices_arr, selected_indices_vec, count);
+                    VECTOR_STORE<uint32_t, M4>(indices_arr, selected_indices_vec, count);
                     for (size_t k = 0; k < count; k++) {
                         size_t j = indices_arr[k];
                         score_index_pairs.push_back({scores[score_idx + j], i + j});
@@ -286,20 +286,20 @@ vector<SelectedIndex> nms_e32m8(
         for (size_t cls = 0; cls < num_classes; cls++) {
             vector<pair<float, size_t>> score_index_pairs;
 
-            for (size_t i = 0; i < spatial_dimension; i += __riscv_vsetvlmax_e32m8()) {
-                size_t vl = SET_VECTOR_LENGTH<float, M8>(spatial_dimension - i);
+			for (size_t i = 0; i < spatial_dimension; i += SET_VECTOR_LENGTH_MAX<float, M8>()) {
+				size_t vl = SET_VECTOR_LENGTH<float, M8>(spatial_dimension - i);
                 size_t score_idx = batch * num_classes * spatial_dimension + cls * spatial_dimension + i;
 
                 auto vscores = VECTOR_LOAD<float, M8>(&scores[score_idx], vl);
                 auto vthreshold = VECTOR_MOVE<float, M8>(score_threshold, vl);
-                vbool4_t mask = __riscv_vmfge_vv_f32m8_b4(vscores, vthreshold, vl);
+                auto mask = VECTOR_GE<float, M8>(vscores, vthreshold, vl);
 
-                size_t count = __riscv_vcpop_m_b4(mask, vl);
+                size_t count = VECTOR_COUNT_POP(mask, vl);
                 if (count > 0) {
-                    vuint32m8_t all_indices = __riscv_vid_v_u32m8(vl);
-                    vuint32m8_t selected_indices_vec = __riscv_vcompress_vm_u32m8(all_indices, mask, vl);
+                    auto all_indices = VECTOR_VID<uint32_t, M8>(vl);
+                    auto selected_indices_vec = VECTOR_COMPRESS<uint32_t, M8>(all_indices, mask, vl);
                     uint32_t* indices_arr = new uint32_t[count];
-                    __riscv_vse32_v_u32m8(indices_arr, selected_indices_vec, count);
+                    VECTOR_STORE<uint32_t, M8>(indices_arr, selected_indices_vec, count);
                     for (size_t k = 0; k < count; k++) {
                         size_t j = indices_arr[k];
                         score_index_pairs.push_back({scores[score_idx + j], i + j});
