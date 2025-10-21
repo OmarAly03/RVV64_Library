@@ -75,9 +75,9 @@ vector<SelectedIndex> nms_e32m1(
                 size_t count = VECTOR_COUNT_POP(mask, vl);
                 if (count > 0) {
                     auto all_indices = VECTOR_VID<uint32_t, M1>(vl);
-                    vuint32m1_t selected_indices_vec = __riscv_vcompress_vm_u32m1(all_indices, mask, vl);
+                    auto selected_indices_vec = VECTOR_COMPRESS<uint32_t, M1>(all_indices, mask, vl);
                     uint32_t* indices_arr = new uint32_t[count];
-                    __riscv_vse32_v_u32m1(indices_arr, selected_indices_vec, count);
+                    VECTOR_STORE<uint32_t, M1>(indices_arr, selected_indices_vec, count);
                     for (size_t k = 0; k < count; k++) {
                         size_t j = indices_arr[k];
                         score_index_pairs.push_back({scores[score_idx + j], i + j});
