@@ -14,9 +14,18 @@ int main(int argc, char* argv[]) {
     int kernel_h = 3, kernel_w = 3;
     int stride_h = 2, stride_w = 2;
     int pad_h = 1, pad_w = 1;
+    int output_pad_h = 0, output_pad_w = 0;
     
     // Parse command line arguments
-    if (argc >= 7) {
+    if (argc >= 9) {
+        input_h = input_w = atoi(argv[1]);
+        kernel_h = kernel_w = atoi(argv[2]);
+        stride_h = stride_w = atoi(argv[3]);
+        pad_h = pad_w = atoi(argv[4]);
+        in_channels = atoi(argv[5]);
+        out_channels = atoi(argv[6]);
+        output_pad_h = output_pad_w = atoi(argv[7]);
+    } else if (argc >= 7) {
         input_h = input_w = atoi(argv[1]);
         kernel_h = kernel_w = atoi(argv[2]);
         stride_h = stride_w = atoi(argv[3]);
@@ -28,14 +37,14 @@ int main(int argc, char* argv[]) {
     }
     
     // Calculate output dimensions
-    int out_height = (input_h - 1) * stride_h - 2 * pad_h + kernel_h;
-    int out_width = (input_w - 1) * stride_w - 2 * pad_w + kernel_w;
+    int out_height = (input_h - 1) * stride_h - 2 * pad_h + kernel_h + output_pad_h;
+    int out_width = (input_w - 1) * stride_w - 2 * pad_w + kernel_w + output_pad_w;
     
     cout << "Transposed Convolution Configuration:" << endl;
     cout << "Input: " << batch_size << "x" << in_channels << "x" << input_h << "x" << input_w << endl;
     cout << "Kernel: " << in_channels << "x" << out_channels << "x" << kernel_h << "x" << kernel_w << endl;
     cout << "Output: " << batch_size << "x" << out_channels << "x" << out_height << "x" << out_width << endl;
-    cout << "Stride: [" << stride_h << ", " << stride_w << "], Padding: [" << pad_h << ", " << pad_w << "]" << endl;
+    cout << "Stride: [" << stride_h << ", " << stride_w << "], Padding: [" << pad_h << ", " << pad_w << "], Output Padding: [" << output_pad_h << ", " << output_pad_w << "]" << endl;
     
     // Memory allocation
     size_t input_size = batch_size * in_channels * input_h * input_w;
@@ -68,14 +77,16 @@ int main(int argc, char* argv[]) {
     
     // Run scalar implementation
     conv_transpose_2d_scalar(input, kernel, output, batch_size, in_channels, out_channels,
-                           input_h, input_w, kernel_h, kernel_w, stride_h, stride_w, pad_h, pad_w);
+                           input_h, input_w, kernel_h, kernel_w, stride_h, stride_w, pad_h, pad_w,
+                           output_pad_h, output_pad_w);
     write_conv_transpose_output_binary("./output_files/output_scalar.bin", output, 
                                      batch_size, out_channels, out_height, out_width);
     
     // Run RVV e32m1 implementation
     #ifdef RVV_AVAILABLE
     conv_transpose_2d_e32m1(input, kernel, output, batch_size, in_channels, out_channels,
-                          input_h, input_w, kernel_h, kernel_w, stride_h, stride_w, pad_h, pad_w);
+                          input_h, input_w, kernel_h, kernel_w, stride_h, stride_w, pad_h, pad_w,
+                          output_pad_h, output_pad_w);
     write_conv_transpose_output_binary("./output_files/output_e32m1.bin", output, 
                                      batch_size, out_channels, out_height, out_width);
     #endif

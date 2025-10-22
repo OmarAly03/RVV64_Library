@@ -8,14 +8,16 @@ void conv_transpose_2d_scalar(
     const float* input, const float* kernel, float* output,
     int batch_size, int in_channels, int out_channels,
     int input_h, int input_w, int kernel_h, int kernel_w,
-    int stride_h, int stride_w, int pad_h, int pad_w
+    int stride_h, int stride_w, int pad_h, int pad_w,
+    int output_pad_h, int output_pad_w
 );
 
 void conv_transpose_2d_e32m1(
     const float* input, const float* kernel, float* output,
     int batch_size, int in_channels, int out_channels,
     int input_h, int input_w, int kernel_h, int kernel_w,
-    int stride_h, int stride_w, int pad_h, int pad_w
+    int stride_h, int stride_w, int pad_h, int pad_w,
+    int output_pad_h, int output_pad_w
 );
 
 // Utility functions

@@ -6,10 +6,11 @@ void conv_transpose_2d_scalar(
     const float* input, const float* kernel, float* output,
     int batch_size, int in_channels, int out_channels,
     int input_h, int input_w, int kernel_h, int kernel_w,
-    int stride_h, int stride_w, int pad_h, int pad_w) {
+    int stride_h, int stride_w, int pad_h, int pad_w,
+    int output_pad_h, int output_pad_w) {
 
-    int out_height = (input_h - 1) * stride_h - 2 * pad_h + kernel_h;
-    int out_width = (input_w - 1) * stride_w - 2 * pad_w + kernel_w;
+    int out_height = (input_h - 1) * stride_h - 2 * pad_h + kernel_h + output_pad_h;
+    int out_width = (input_w - 1) * stride_w - 2 * pad_w + kernel_w + output_pad_w;
 
     // Initialize output to zero
     size_t output_size = batch_size * out_channels * out_height * out_width;

@@ -22,9 +22,18 @@ stride = 2
 padding = 1
 in_channels = 1
 out_channels = 1
+output_padding = 0
 
 # Parse command line arguments
-if len(sys.argv) >= 7:
+if len(sys.argv) >= 8:
+    input_size = int(sys.argv[1])
+    kernel_size = int(sys.argv[2])
+    stride = int(sys.argv[3])
+    padding = int(sys.argv[4])
+    in_channels = int(sys.argv[5])
+    out_channels = int(sys.argv[6])
+    output_padding = int(sys.argv[7])
+elif len(sys.argv) >= 7:
     input_size = int(sys.argv[1])
     kernel_size = int(sys.argv[2])
     stride = int(sys.argv[3])
@@ -35,11 +44,11 @@ elif len(sys.argv) >= 2:
     input_size = int(sys.argv[1])
 
 # Calculate output dimensions
-out_height = (input_size - 1) * stride - 2 * padding + kernel_size
-out_width = (input_size - 1) * stride - 2 * padding + kernel_size
+out_height = (input_size - 1) * stride - 2 * padding + kernel_size + output_padding
+out_width = (input_size - 1) * stride - 2 * padding + kernel_size + output_padding
 
 print(f"\nTransposed Convolution: {input_size}x{input_size} input, {kernel_size}x{kernel_size} kernel")
-print(f"Stride: {stride}, Padding: {padding}, Channels: {in_channels}->{out_channels}")
+print(f"Stride: {stride}, Padding: {padding}, Output Padding: {output_padding}, Channels: {in_channels}->{out_channels}")
 print(f"Output: {out_height}x{out_width}")
 
 # Load input and kernel data

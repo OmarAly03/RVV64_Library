@@ -75,9 +75,21 @@ if __name__ == "__main__":
     kernel_h, kernel_w = 3, 3
     stride = [2, 2]
     padding = [1, 1]
+    output_padding = [0, 0]
 
     # Parse command line arguments if provided
-    if len(sys.argv) >= 7:
+    if len(sys.argv) >= 8:
+        input_h = input_w = int(sys.argv[1])
+        kernel_h = kernel_w = int(sys.argv[2])
+        stride_val = int(sys.argv[3])
+        stride = [stride_val, stride_val]
+        padding_val = int(sys.argv[4])
+        padding = [padding_val, padding_val]
+        in_channels = int(sys.argv[5])
+        out_channels = int(sys.argv[6])
+        output_padding_val = int(sys.argv[7])
+        output_padding = [output_padding_val, output_padding_val]
+    elif len(sys.argv) >= 7:
         input_h = input_w = int(sys.argv[1])
         kernel_h = kernel_w = int(sys.argv[2])
         stride_val = int(sys.argv[3])
@@ -99,7 +111,8 @@ if __name__ == "__main__":
         kernel_shape=kernel_shape,
         output_channels=out_channels,
         stride=stride,
-        padding=padding
+        padding=padding,
+        output_padding=output_padding
     )
 
     # Save the model
