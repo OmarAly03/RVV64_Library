@@ -15,7 +15,6 @@ AXIS ?= 0
 
 $(TARGET): $(SRCS)
 	@$(CC) $(FLAGS) $(INCLUDES) -o $@ $^
-	@python3 src/onnx_scatter_elements.py
 
 run: $(TARGET)
 	@qemu-riscv64 -cpu rv64,v=true $(TARGET) $(SIZE) $(AXIS)
