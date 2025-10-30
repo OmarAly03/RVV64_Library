@@ -57,5 +57,6 @@ void write_nms_results_to_file(const char* filename, const std::vector<SelectedI
 void write_nms_results_binary(const char* filename, const std::vector<SelectedIndex>& results);
 float compute_iou(const float* box1, const float* box2, int center_point_box);
 void convert_box_format(const float* box, float* converted_box, int from_format, int to_format);
+void convert_box_format_rvv(const float* box, float* converted_box, int from_format, int to_format);
 
 #endif

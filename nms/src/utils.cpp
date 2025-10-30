@@ -3,7 +3,9 @@
 #include <cmath>
 #include <algorithm>
 #include <vector>
+#include <riscv_vector.h>
 #include "../include/defs.h"
+#include "../../lib/rvv_defs.hpp"
 
 using namespace std;
 
@@ -75,6 +77,77 @@ void convert_box_format(const float* box, float* converted_box, int from_format,
         converted_box[1] = (y1 + y2) / 2.0f;  // y_center
         converted_box[2] = x2 - x1;           // width
         converted_box[3] = y2 - y1;           // height
+    }
+}
+
+// RVV vectorized box format conversion
+void convert_box_format_rvv(const float* box, float* converted_box, int from_format, int to_format) {
+    if (from_format == to_format) {
+        // No conversion needed - copy with vector load/store
+        size_t vl = 4;
+        auto v_box = VECTOR_LOAD<float, M1>(box, vl);
+        VECTOR_STORE<float, M1>(converted_box, v_box, vl);
+        return;
+    }
+    
+    size_t vl = 4;
+    auto v_box = VECTOR_LOAD<float, M1>(box, vl);
+    
+    if (from_format == CENTER_FORMAT && to_format == CORNER_FORMAT) {
+        // Convert from [x_center, y_center, width, height] to [y1, x1, y2, x2]
+        // Load: [x_center, y_center, width, height]
+        auto x_center = VECTOR_EXTRACT_SCALAR<float, M1>(v_box);
+        auto y_center = VECTOR_EXTRACT_SCALAR<float, M1>(VECTOR_SLIDEDOWN<float, M1>(v_box, 1, vl));
+        auto width = VECTOR_EXTRACT_SCALAR<float, M1>(VECTOR_SLIDEDOWN<float, M1>(v_box, 2, vl));
+        auto height = VECTOR_EXTRACT_SCALAR<float, M1>(VECTOR_SLIDEDOWN<float, M1>(v_box, 3, vl));
+        
+        // Create vector [width/2, height/2, width/2, height/2]
+        float half_dims[4] = {width * 0.5f, height * 0.5f, width * 0.5f, height * 0.5f};
+        auto v_half_dims = VECTOR_LOAD<float, M1>(half_dims, vl);
+        
+        // Create center vector [x_center, y_center, x_center, y_center]
+        float centers[4] = {x_center, y_center, x_center, y_center};
+        auto v_centers = VECTOR_LOAD<float, M1>(centers, vl);
+        
+        // Compute [x_center - width/2, y_center - height/2, x_center + width/2, y_center + height/2]
+        float signs[4] = {-1.0f, -1.0f, 1.0f, 1.0f};
+        auto v_signs = VECTOR_LOAD<float, M1>(signs, vl);
+        auto v_result_temp = VECTOR_FMACC<float, M1>(v_centers, v_half_dims, v_signs, vl);
+        
+        // Swap to get [y1, x1, y2, x2] from [x1, y1, x2, y2]
+        float result_temp[4];
+        VECTOR_STORE<float, M1>(result_temp, v_result_temp, vl);
+        converted_box[0] = result_temp[1];  // y1
+        converted_box[1] = result_temp[0];  // x1
+        converted_box[2] = result_temp[3];  // y2
+        converted_box[3] = result_temp[2];  // x2
+        
+    } else if (from_format == CORNER_FORMAT && to_format == CENTER_FORMAT) {
+        // Convert from [y1, x1, y2, x2] to [x_center, y_center, width, height]
+        auto y1 = VECTOR_EXTRACT_SCALAR<float, M1>(v_box);
+        auto x1 = VECTOR_EXTRACT_SCALAR<float, M1>(VECTOR_SLIDEDOWN<float, M1>(v_box, 1, vl));
+        auto y2 = VECTOR_EXTRACT_SCALAR<float, M1>(VECTOR_SLIDEDOWN<float, M1>(v_box, 2, vl));
+        auto x2 = VECTOR_EXTRACT_SCALAR<float, M1>(VECTOR_SLIDEDOWN<float, M1>(v_box, 3, vl));
+        
+        // Create vectors [x1, y1, x2, y2] and [x2, y2, x1, y1]
+        float corners1[4] = {x1, y1, x2, y2};
+        float corners2[4] = {x2, y2, x1, y1};
+        auto v_corners1 = VECTOR_LOAD<float, M1>(corners1, vl);
+        auto v_corners2 = VECTOR_LOAD<float, M1>(corners2, vl);
+        
+        // Sum: [x1+x2, y1+y2, x2+x1, y2+y1] (but we only need first two for center)
+        auto v_sum = VECTOR_ADD<float, M1>(v_corners1, v_corners2, vl);
+        
+        // Difference: [x2-x1, y2-y1, x1-x2, y1-y2] (we only need first two for width/height)
+        auto v_diff = VECTOR_SUB<float, M1>(v_corners2, v_corners1, vl);
+        
+        // Divide by 2 for centers
+        auto v_half = VECTOR_MOVE<float, M1>(0.5f, vl);
+        auto v_center = VECTOR_MUL<float, M1>(v_sum, v_half, vl);
+        
+        // Result: [x_center, y_center, width, height]
+        VECTOR_STORE<float, M1>(converted_box, v_center, 2);      // Store centers
+        VECTOR_STORE<float, M1>(converted_box + 2, v_diff, 2);    // Store dimensions
     }
 }
 
