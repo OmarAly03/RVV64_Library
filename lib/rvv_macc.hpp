@@ -176,4 +176,30 @@ inline auto VECTOR_FMACC(VD vd, SrcType src, VS2 vs2, size_t vl) {
     }
 }
 
+// FMADD: vd = vs1 * scalar + vd (different operand order than FMACC)
+template<typename T, int LMUL, typename VS1, typename VD>
+inline auto VECTOR_FMADD_VF(VS1 vs1, T scalar, VD vd, size_t vl) {
+    if constexpr (std::is_same_v<T, float>) {
+        if constexpr (LMUL == MF2) return __riscv_vfmadd_vf_f32mf2(vs1, scalar, vd, vl);
+        else if constexpr (LMUL == M1) return __riscv_vfmadd_vf_f32m1(vs1, scalar, vd, vl);
+        else if constexpr (LMUL == M2) return __riscv_vfmadd_vf_f32m2(vs1, scalar, vd, vl);
+        else if constexpr (LMUL == M4) return __riscv_vfmadd_vf_f32m4(vs1, scalar, vd, vl);
+        else if constexpr (LMUL == M8) return __riscv_vfmadd_vf_f32m8(vs1, scalar, vd, vl);
+    }
+    else if constexpr (std::is_same_v<T, double>) {
+        if constexpr (LMUL == M1) return __riscv_vfmadd_vf_f64m1(vs1, scalar, vd, vl);
+        else if constexpr (LMUL == M2) return __riscv_vfmadd_vf_f64m2(vs1, scalar, vd, vl);
+        else if constexpr (LMUL == M4) return __riscv_vfmadd_vf_f64m4(vs1, scalar, vd, vl);
+        else if constexpr (LMUL == M8) return __riscv_vfmadd_vf_f64m8(vs1, scalar, vd, vl);
+    }
+    else if constexpr (std::is_same_v<T, _Float16>) {
+        if constexpr (LMUL == MF4) return __riscv_vfmadd_vf_f16mf4(vs1, scalar, vd, vl);
+        else if constexpr (LMUL == MF2) return __riscv_vfmadd_vf_f16mf2(vs1, scalar, vd, vl);
+        else if constexpr (LMUL == M1) return __riscv_vfmadd_vf_f16m1(vs1, scalar, vd, vl);
+        else if constexpr (LMUL == M2) return __riscv_vfmadd_vf_f16m2(vs1, scalar, vd, vl);
+        else if constexpr (LMUL == M4) return __riscv_vfmadd_vf_f16m4(vs1, scalar, vd, vl);
+        else if constexpr (LMUL == M8) return __riscv_vfmadd_vf_f16m8(vs1, scalar, vd, vl);
+    }
+}
+
 #endif // RVV_MACC_HPP
