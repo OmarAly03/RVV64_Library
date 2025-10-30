@@ -76,7 +76,7 @@ int main() {
         std::vector<float> final_output(BATCH_SIZE * F5_OUT);
 
         // --- 4. Load Input Image ---
-        load_preprocessed_image(input_tensor, "./image_binaries/0.bin");
+        load_preprocessed_image(input_tensor, "./image_binaries/6.bin");
 
         // --- 5. Run Inference Pipeline ---
         std::cout << "Running inference..." << std::endl;
@@ -84,8 +84,8 @@ int main() {
         // Layer 1: C1
         conv2d_scalar(input_tensor.data(), c1_w.data(), c1_out_nobias.data(),
                      BATCH_SIZE, C1_IN_C, C1_OUT_C, IN_H, IN_W, C1_K, C1_K, 1, 1, 0, 0);
-        add_bias_placeholder(c1_out_nobias.data(), c1_b.data(), c1_out.data(),
-                             BATCH_SIZE, C1_OUT_C, C1_OUT_H, C1_OUT_W);
+		bias_add_scalar(c1_out_nobias.data(), c1_b.data(), c1_out.data(),
+				BATCH_SIZE, C1_OUT_C, C1_OUT_H, C1_OUT_W);
 		relu_scalar(c1_out.data(), relu1_out.data(), C1_OUT_SIZE);
         maxpool_scalar_tile(relu1_out.data(), pool1_out.data(), indices_pool1.data(),
                            BATCH_SIZE, C1_OUT_C, C1_OUT_H, C1_OUT_W, POOL1_K, POOL1_S, 
@@ -95,8 +95,9 @@ int main() {
         // Branch 1: C2_1
         conv2d_scalar(pool1_out.data(), c2_1_w.data(), c2_1_out_nobias.data(),
                      BATCH_SIZE, C2_IN_C, C2_OUT_C, POOL1_OUT_H, POOL1_OUT_W, C2_K, C2_K, 1, 1, 0, 0);
-        add_bias_placeholder(c2_1_out_nobias.data(), c2_1_b.data(), c2_1_out.data(),
-                             BATCH_SIZE, C2_OUT_C, C2_OUT_H, C2_OUT_W);
+		bias_add_scalar(c2_1_out_nobias.data(), c2_1_b.data(), c2_1_out.data(),
+				BATCH_SIZE, C2_OUT_C, C2_OUT_H, C2_OUT_W);
+
 		relu_scalar(c2_1_out.data(), relu2_1_out.data(), C2_OUT_SIZE);
         maxpool_scalar_tile(relu2_1_out.data(), pool2_1_out.data(), indices_pool2_1.data(),
                            BATCH_SIZE, C2_OUT_C, C2_OUT_H, C2_OUT_W, POOL2_K, POOL2_S, 
@@ -105,8 +106,8 @@ int main() {
         // Branch 2: C2_2
         conv2d_scalar(pool1_out.data(), c2_2_w.data(), c2_2_out_nobias.data(),
                      BATCH_SIZE, C2_IN_C, C2_OUT_C, POOL1_OUT_H, POOL1_OUT_W, C2_K, C2_K, 1, 1, 0, 0);
-        add_bias_placeholder(c2_2_out_nobias.data(), c2_2_b.data(), c2_2_out.data(),
-                             BATCH_SIZE, C2_OUT_C, C2_OUT_H, C2_OUT_W);
+		bias_add_scalar(c2_2_out_nobias.data(), c2_2_b.data(), c2_2_out.data(),
+					BATCH_SIZE, C2_OUT_C, C2_OUT_H, C2_OUT_W);
 		relu_scalar(c2_2_out.data(), relu2_2_out.data(), C2_OUT_SIZE);
         maxpool_scalar_tile(relu2_2_out.data(), pool2_2_out.data(), indices_pool2_2.data(),
                            BATCH_SIZE, C2_OUT_C, C2_OUT_H, C2_OUT_W, POOL2_K, POOL2_S, 
@@ -114,26 +115,27 @@ int main() {
         // --- PARALLEL BLOCK END ---
 
         // Add node
-        add_tensors_placeholder(pool2_1_out.data(), pool2_2_out.data(), add_out.data(), ADD_OUT_SIZE);
+        tensor_add_scalar(pool2_1_out.data(), pool2_2_out.data(), add_out.data(), ADD_OUT_SIZE);
 
         // Layer 3: C3 (The 5x5 Conv that acts as a Linear layer)
         conv2d_scalar(add_out.data(), c3_w.data(), c3_out_nobias.data(),
                      BATCH_SIZE, C3_IN_C, C3_OUT_C, POOL2_OUT_H, POOL2_OUT_W, C3_K, C3_K, 1, 1, 0, 0);
-        add_bias_placeholder(c3_out_nobias.data(), c3_b.data(), c3_out.data(),
-                             BATCH_SIZE, C3_OUT_C, C3_OUT_H, C3_OUT_W);
+		bias_add_scalar(c3_out_nobias.data(), c3_b.data(), c3_out.data(),
+				BATCH_SIZE, C3_OUT_C, C3_OUT_H, C3_OUT_W);
 		relu_scalar(c3_out.data(), relu3_out.data(), C3_OUT_SIZE);
 
         // Layer 4: F4 (Flatten/Reshape is implicit, c3_out_size is 120)
-        linear_placeholder(relu3_out.data(), f4_w.data(), f4_b.data(),
-                           f4_out.data(), BATCH_SIZE, F4_IN, F4_OUT);
+		dense_scalar(relu3_out.data(), f4_w.data(), f4_b.data(),
+		f4_out.data(), F4_IN, F4_OUT);
+
 		relu_scalar(f4_out.data(), relu4_out.data(), f4_out.size());
         
         // Layer 5: F5
-        linear_placeholder(relu4_out.data(), f5_w.data(), f5_b.data(),
-                           f5_out.data(), BATCH_SIZE, F5_IN, F5_OUT);
+		dense_scalar(relu4_out.data(), f5_w.data(), f5_b.data(),
+		f5_out.data(), F5_IN, F5_OUT);
 
         // Final Layer: LogSoftmax
-        softmax_placeholder(f5_out.data(), final_output.data(), BATCH_SIZE, F5_OUT);
+		softmax_scalar(f5_out.data(), final_output.data(), F5_OUT);
 
         // --- 6. Find and Print Prediction ---
         // Argmax on the final probabilities

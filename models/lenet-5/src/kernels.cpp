@@ -165,35 +165,43 @@ void relu_scalar(float* input, float* output, size_t size) {
     }
 }
 
-
-// --- Placeholder Kernels (You still need to implement these) ---
-void linear_placeholder(const float* input, const float* weights, const float* bias,
-                        float* output, size_t batch_size,
-                        size_t in_features, size_t out_features) {
-    // Implements Y = A*B^T + C, which matches GEMM(transB=1)
-    for (size_t b = 0; b < batch_size; ++b) {
-        for (size_t out_f = 0; out_f < out_features; ++out_f) {
-            float sum = 0.0f;
-            for (size_t in_f = 0; in_f < in_features; ++in_f) {
-                // Input A: [b, in_f]
-                // Weight B: [out_f, in_f] (This is B, not B^T)
-                sum += input[b * in_features + in_f] * weights[out_f * in_features + in_f];
-            }
-            output[b * out_features + out_f] = sum + bias[out_f];
+void dense_scalar(const float* input, const float* weights, const float* bias,
+                        float* output, size_t in_features, size_t out_features) {
+    // Implements Y = A*B^T + C, where A=input, B=weights, C=bias
+    // A shape: [in_features]
+    // B shape: [out_features, in_features]
+    // C shape: [out_features]
+    // Y shape: [out_features]
+    for (size_t out_f = 0; out_f < out_features; ++out_f) {
+        float sum = 0.0f;
+        for (size_t in_f = 0; in_f < in_features; ++in_f) {
+            sum += input[in_f] * weights[out_f * in_features + in_f];
         }
+        output[out_f] = sum + bias[out_f];
     }
 }
 
-void add_bias_placeholder(const float* input, const float* bias, float* output,
-                        size_t batch_size, size_t channels,
-                        size_t height, size_t width) {
-    size_t channel_size = height * width;
+
+void bias_add_scalar(const float* input, const float* bias, float* output,
+                       size_t batch_size, size_t channels,
+                       size_t height, size_t width) {
+    
+    // Size of one 2D feature map
+    size_t channel_size = height * width; 
+    
     for (size_t b = 0; b < batch_size; ++b) {
         for (size_t c = 0; c < channels; ++c) {
-            float b_val = bias[c];
+            // Get the scalar bias value for this channel
+            float b_val = bias[c]; 
+            // Calculate the starting offset for this channel
             size_t offset = (b * channels + c) * channel_size;
+            
+            const float* in_ptr = input + offset;
+            float* out_ptr = output + offset;
+            
+            // This is the loop we will vectorize
             for (size_t i = 0; i < channel_size; ++i) {
-                output[offset + i] = input[offset + i] + b_val;
+                out_ptr[i] = in_ptr[i] + b_val;
             }
         }
     }
@@ -203,7 +211,7 @@ void add_bias_placeholder(const float* input, const float* bias, float* output,
  * ### NEW PLACEHOLDER KERNEL ###
  * Element-wise addition of two tensors.
  */
-void add_tensors_placeholder(const float* input_a, const float* input_b, float* output,
+void tensor_add_scalar(const float* input_a, const float* input_b, float* output,
                            size_t size) {
     for (size_t i = 0; i < size; ++i) {
         output[i] = input_a[i] + input_b[i];
@@ -214,24 +222,24 @@ void add_tensors_placeholder(const float* input_a, const float* input_b, float* 
  * ### NEW PLACEHOLDER KERNEL ###
  * LogSoftmax implementation.
  */
-void softmax_placeholder(const float* input, float* output, size_t batch_size, size_t elements) {
-    for (size_t b = 0; b < batch_size; ++b) {
-        const float* in_ptr = input + b * elements;
-        float* out_ptr = output + b * elements;
-
-        // Find max for numerical stability
-        float max_val = *std::max_element(in_ptr, in_ptr + elements);
-        
-        // Calculate sum of exps
-        float sum_exp = 0.0f;
-        for (size_t i = 0; i < elements; ++i) {
-            sum_exp += std::exp(in_ptr[i] - max_val);
+void softmax_scalar(float* input, float* output, size_t size) {
+    // Pass 1: Find Max
+    float max_val = -__builtin_inff();
+    for (size_t i = 0; i < size; i++) {
+        if (input[i] > max_val) {
+            max_val = input[i];
         }
-        float log_sum_exp = std::log(sum_exp);
+    }
 
-        // Calculate logsoftmax
-        for (size_t i = 0; i < elements; ++i) {
-            out_ptr[i] = (in_ptr[i] - max_val) - log_sum_exp;
-        }
+    // Pass 2: Calculate Exponentials and Sum
+    float sum = 0.0f;
+    for (size_t i = 0; i < size; i++) {
+        output[i] = expf(input[i] - max_val);
+        sum += output[i];
+    }
+
+    // Pass 3: Divide by Sum
+    for (size_t i = 0; i < size; i++) {
+        output[i] /= sum;
     }
 }

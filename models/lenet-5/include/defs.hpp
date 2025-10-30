@@ -82,18 +82,16 @@ void maxpool_scalar_tile(
 
 void relu_scalar(float* input, float* output, size_t size);
 
-void linear_placeholder(const float* input, const float* weights, const float* bias,
-	float* output, size_t batch_size,
-	size_t in_features, size_t out_features);
+void dense_scalar(const float* input, const float* weights, const float* bias,
+	float* output, size_t in_features, size_t out_features);
 
-void add_bias_placeholder(const float* input, const float* bias, float* output,
+void bias_add_scalar(const float* input, const float* bias, float* output,
 	size_t batch_size, size_t channels,
 	size_t height, size_t width);
 
-void add_tensors_placeholder(const float* input_a, const float* input_b, float* output,
+void tensor_add_scalar(const float* input_a, const float* input_b, float* output,
 	size_t size);
 
-void softmax_placeholder(const float* input, float* output, size_t batch_size, size_t elements);
-
+void softmax_scalar(float* input, float* output, size_t size);
 
 #endif // DEFS_HPP
