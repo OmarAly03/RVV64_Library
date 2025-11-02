@@ -2,6 +2,9 @@
 #include <cstring>
 #include <algorithm>
 #include <iostream>
+#include <cmath>
+#include "defs.h"
+#include "rvv_defs.hpp"
 
 // RVV optimized 2D convolution (e32m1)
 void conv2d_e32m1(
@@ -56,27 +59,26 @@ void conv2d_e32m1(
                                 
                                 if (processable <= 0) break;
                                 
-                                vl = __riscv_vsetvl_e32m1(processable);
-                                
-                                // Load input values
-                                vfloat32m1_t v_input = __riscv_vle32_v_f32m1(
+                                vl = SET_VECTOR_LENGTH<float, M1>(processable);
+
+                                // Load input and kernel vectors using wrappers
+                                vfloat32m1_t v_input = VECTOR_LOAD<float, M1>(
                                     &input[b * in_channels * input_h * input_w +
                                            ic * input_h * input_w +
                                            in_h * input_w + in_w + kw], vl);
-                                
-                                // Load kernel values (note: kernel layout is OIHW)
-                                vfloat32m1_t v_kernel = __riscv_vle32_v_f32m1(
+
+                                vfloat32m1_t v_kernel = VECTOR_LOAD<float, M1>(
                                     &kernel[oc * in_channels * kernel_h * kernel_w +
                                            ic * kernel_h * kernel_w +
                                            kh * kernel_w + kw], vl);
-                                
-                                // Multiply and accumulate
-                                vfloat32m1_t v_mult = __riscv_vfmul_vv_f32m1(v_input, v_kernel, vl);
-                                
+
+                                // Element-wise multiply
+                                vfloat32m1_t v_mult = VECTOR_MUL_VV<float, M1>(v_input, v_kernel, vl);
+
                                 // Reduce sum horizontally
-                                vfloat32m1_t v_sum = __riscv_vfredusum_vs_f32m1_f32m1(
-                                    v_mult, __riscv_vfmv_s_f_f32m1(0.0f, 1), vl);
-                                
+                                vfloat32m1_t v_zero = VECTOR_BROADCAST<float, M1>(0.0f, 1);
+                                vfloat32m1_t v_sum = __riscv_vfredusum_vs_f32m1_f32m1(v_mult, v_zero, vl);
+
                                 // Extract scalar sum and add to total
                                 sum += __riscv_vfmv_f_s_f32m1_f32(v_sum);
                             }
@@ -144,27 +146,26 @@ void conv2d_e32m2(
                                 
                                 if (processable <= 0) break;
                                 
-                                vl = __riscv_vsetvl_e32m2(processable);
-                                
-                                // Load input values
-                                vfloat32m2_t v_input = __riscv_vle32_v_f32m2(
+                                vl = SET_VECTOR_LENGTH<float, M2>(processable);
+
+                                // Load input and kernel vectors using wrappers
+                                vfloat32m2_t v_input = VECTOR_LOAD<float, M2>(
                                     &input[b * in_channels * input_h * input_w +
                                            ic * input_h * input_w +
                                            in_h * input_w + in_w + kw], vl);
-                                
-                                // Load kernel values
-                                vfloat32m2_t v_kernel = __riscv_vle32_v_f32m2(
+
+                                vfloat32m2_t v_kernel = VECTOR_LOAD<float, M2>(
                                     &kernel[oc * in_channels * kernel_h * kernel_w +
                                            ic * kernel_h * kernel_w +
                                            kh * kernel_w + kw], vl);
-                                
-                                // Multiply and accumulate
-                                vfloat32m2_t v_mult = __riscv_vfmul_vv_f32m2(v_input, v_kernel, vl);
-                                
+
+                                // Element-wise multiply
+                                vfloat32m2_t v_mult = VECTOR_MUL_VV<float, M2>(v_input, v_kernel, vl);
+
                                 // Reduce sum horizontally
-                                vfloat32m1_t v_sum = __riscv_vfredusum_vs_f32m2_f32m1(
-                                    v_mult, __riscv_vfmv_s_f_f32m1(0.0f, 1), vl);
-                                
+                                vfloat32m1_t v_zero = VECTOR_BROADCAST<float, M1>(0.0f, 1);
+                                vfloat32m1_t v_sum = __riscv_vfredusum_vs_f32m2_f32m1(v_mult, v_zero, vl);
+
                                 // Extract scalar sum and add to total
                                 sum += __riscv_vfmv_f_s_f32m1_f32(v_sum);
                             }
@@ -232,26 +233,25 @@ void conv2d_e32m4(
                                 
                                 if (processable <= 0) break;
                                 
-                                vl = __riscv_vsetvl_e32m4(processable);
-                                
-                                // Load input values
-                                vfloat32m4_t v_input = __riscv_vle32_v_f32m4(
+                                vl = SET_VECTOR_LENGTH<float, M4>(processable);
+
+                                // Load input and kernel vectors using wrappers
+                                vfloat32m4_t v_input = VECTOR_LOAD<float, M4>(
                                     &input[b * in_channels * input_h * input_w +
                                            ic * input_h * input_w +
                                            in_h * input_w + in_w + kw], vl);
-                                
-                                // Load kernel values
-                                vfloat32m4_t v_kernel = __riscv_vle32_v_f32m4(
+
+                                vfloat32m4_t v_kernel = VECTOR_LOAD<float, M4>(
                                     &kernel[oc * in_channels * kernel_h * kernel_w +
                                            ic * kernel_h * kernel_w +
                                            kh * kernel_w + kw], vl);
-                                
-                                // Multiply and accumulate
-                                vfloat32m4_t v_mult = __riscv_vfmul_vv_f32m4(v_input, v_kernel, vl);
-                                
+
+                                // Element-wise multiply
+                                vfloat32m4_t v_mult = VECTOR_MUL_VV<float, M4>(v_input, v_kernel, vl);
+
                                 // Reduce sum horizontally
-                                vfloat32m1_t v_sum = __riscv_vfredusum_vs_f32m4_f32m1(
-                                    v_mult, __riscv_vfmv_s_f_f32m1(0.0f, 1), vl);
+                                vfloat32m1_t v_zero = VECTOR_BROADCAST<float, M1>(0.0f, 1);
+                                vfloat32m1_t v_sum = __riscv_vfredusum_vs_f32m4_f32m1(v_mult, v_zero, vl);
 
                                 // Extract scalar sum and add to total
                                 sum += __riscv_vfmv_f_s_f32m1_f32(v_sum);
@@ -320,26 +320,25 @@ void conv2d_e32m8(
                                 
                                 if (processable <= 0) break;
                                 
-                                vl = __riscv_vsetvl_e32m8(processable);
-                                
-                                // Load input values
-                                vfloat32m8_t v_input = __riscv_vle32_v_f32m8(
+                                vl = SET_VECTOR_LENGTH<float, M8>(processable);
+
+                                // Load input and kernel vectors using wrappers
+                                vfloat32m8_t v_input = VECTOR_LOAD<float, M8>(
                                     &input[b * in_channels * input_h * input_w +
                                            ic * input_h * input_w +
                                            in_h * input_w + in_w + kw], vl);
-                                
-                                // Load kernel values
-                                vfloat32m8_t v_kernel = __riscv_vle32_v_f32m8(
+
+                                vfloat32m8_t v_kernel = VECTOR_LOAD<float, M8>(
                                     &kernel[oc * in_channels * kernel_h * kernel_w +
                                            ic * kernel_h * kernel_w +
                                            kh * kernel_w + kw], vl);
-                                
-                                // Multiply and accumulate
-                                vfloat32m8_t v_mult = __riscv_vfmul_vv_f32m8(v_input, v_kernel, vl);
-                                
+
+                                // Element-wise multiply
+                                vfloat32m8_t v_mult = VECTOR_MUL_VV<float, M8>(v_input, v_kernel, vl);
+
                                 // Reduce sum horizontally
-                                vfloat32m1_t v_sum = __riscv_vfredusum_vs_f32m8_f32m1(
-                                    v_mult, __riscv_vfmv_s_f_f32m1(0.0f, 1), vl);
+                                vfloat32m1_t v_zero = VECTOR_BROADCAST<float, M1>(0.0f, 1);
+                                vfloat32m1_t v_sum = __riscv_vfredusum_vs_f32m8_f32m1(v_mult, v_zero, vl);
 
                                 // Extract scalar sum and add to total
                                 sum += __riscv_vfmv_f_s_f32m1_f32(v_sum);

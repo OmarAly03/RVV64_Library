@@ -4,18 +4,6 @@
 #include <algorithm>
 #include <cassert>
 
-/**
- * @brief Calculate output spatial dimensions for 2D convolution
- * 
- * @param input_size    Input height or width
- * @param kernel_size   Kernel height or width
- * @param stride        Stride in this dimension
- * @param pad          Padding in this dimension
- * @return             Output dimension size
- */
-inline int conv_output_size(int input_size, int kernel_size, int stride, int pad) {
-    return (input_size + 2 * pad - kernel_size) / stride + 1;
-}
 
 /**
  * @brief 2D Convolution - Generalized scalar implementation with batch support
@@ -49,20 +37,10 @@ void conv2d_scalar(
     int input_h, int input_w, int kernel_h, int kernel_w,
     int stride_h, int stride_w, int pad_h, int pad_w) {
     
-    // Parameter validation
-    assert(input != nullptr && kernel != nullptr && output != nullptr);
-    assert(batch_size > 0 && in_channels > 0 && out_channels > 0);
-    assert(input_h > 0 && input_w > 0);
-    assert(kernel_h > 0 && kernel_w > 0);
-    assert(stride_h > 0 && stride_w > 0);
-    assert(pad_h >= 0 && pad_w >= 0);
     
-    // Calculate output spatial dimensions using helper function
-    int out_height = conv_output_size(input_h, kernel_h, stride_h, pad_h);
-    int out_width = conv_output_size(input_w, kernel_w, stride_w, pad_w);
-    
-    // Ensure output dimensions are positive
-    assert(out_height > 0 && out_width > 0);
+    // Calculate output spatial dimensions
+    int out_height = (input_h + 2 * pad_h - kernel_h) / stride_h + 1;
+    int out_width = (input_w + 2 * pad_w - kernel_w) / stride_w + 1;
     
     // Initialize output tensor to zero
     std::memset(output, 0, batch_size * out_channels * out_height * out_width * sizeof(float));
@@ -98,7 +76,6 @@ void conv2d_scalar(
                                     // Multiply-accumulate operation
                                     sum += input[input_idx] * kernel[kernel_idx];
                                 }
-                                // Note: Outside bounds contributes 0 (implicit zero-padding)
                             }
                         }
                     }
@@ -115,6 +92,7 @@ void conv2d_scalar(
     }
 }
 
+#ifdef BUILD_SCALAR_CONV_MAIN
 int main() {
     // Example: 4x4 input, 1 channel, 3x3 kernel, 1 output channel, stride=1, pad=1
     // Expected output size: 4x4
@@ -126,8 +104,8 @@ int main() {
     int pad_h = 1, pad_w = 1;
     
     // Calculate output dimensions
-    int out_height = conv_output_size(input_h, kernel_h, stride_h, pad_h);  // 4
-    int out_width = conv_output_size(input_w, kernel_w, stride_w, pad_w);   // 4
+    int out_height = (input_h + 2 * pad_h - kernel_h) / stride_h + 1;  // 4
+    int out_width = (input_w + 2 * pad_w - kernel_w) / stride_w + 1;   // 4
 
     // Create test data (NCHW layout)
     std::vector<float> input(batch_size * in_channels * input_h * input_w, 1.0f);  // All 1s
@@ -160,3 +138,4 @@ int main() {
     }
     return 0;
 }
+#endif // BUILD_SCALAR_CONV_MAIN
