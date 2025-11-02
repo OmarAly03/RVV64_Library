@@ -1,8 +1,8 @@
 CC = riscv64-unknown-linux-gnu-g++
-FLAGS = -march=rv64gcv -static -O2
+FLAGS = -march=rv64gcv -static -O1 -g
 
 # Include directories
-INCLUDES = -Iinclude
+INCLUDES = -Iinclude -I../lib
 
 # Source files
 SRCS = run_nms.cpp src/rvv_nms.cpp src/utils.cpp
@@ -32,8 +32,7 @@ run: $(TARGET) onnx onnx
 	@python3 main.py $(BATCHES) $(CLASSES) $(SPATIAL) $(MAX_BOXES) $(IOU_THRESH) $(SCORE_THRESH)
 
 clean:
-	rm -f $(TARGET)
-	rm -rf output_files
+	rm -f output_files/*
 
 # Example usage:
 # make BATCHES=2 CLASSES=3 SPATIAL=200 MAX_BOXES=100 IOU_THRESH=0.7 SCORE_THRESH=0.2 run

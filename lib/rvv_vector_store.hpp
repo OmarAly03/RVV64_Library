@@ -47,17 +47,20 @@ void __riscv_vse64_v_i64m8 (int64_t *base, vint64m8_t value, size_t vl);
 
 template<typename T, int LMUL, typename VecType>
 inline void VECTOR_STORE(T* base, VecType value, size_t vl) {
-	if constexpr (std::is_same_v<T, float>) {
-		if constexpr (LMUL == M1) __riscv_vse32_v_f32m1(base, value, vl);
+	if constexpr (std::is_same_v<T, _Float16>) {
+		if constexpr (LMUL == MF4) __riscv_vse16_v_f16mf4(base, value, vl);
+		else if constexpr (LMUL == MF2) __riscv_vse16_v_f16mf2(base, value, vl);
+		else if constexpr (LMUL == M1) __riscv_vse16_v_f16m1(base, value, vl);
+		else if constexpr (LMUL == M2) __riscv_vse16_v_f16m2(base, value, vl);
+		else if constexpr (LMUL == M4) __riscv_vse16_v_f16m4(base, value, vl);
+		else if constexpr (LMUL == M8) __riscv_vse16_v_f16m8(base, value, vl);
+	}
+	else if constexpr (std::is_same_v<T, float>) {
+		if constexpr (LMUL == MF2) __riscv_vse32_v_f32mf2(base, value, vl);
+		else if constexpr (LMUL == M1) __riscv_vse32_v_f32m1(base, value, vl);
 		else if constexpr (LMUL == M2) __riscv_vse32_v_f32m2(base, value, vl);
 		else if constexpr (LMUL == M4) __riscv_vse32_v_f32m4(base, value, vl);
 		else if constexpr (LMUL == M8) __riscv_vse32_v_f32m8(base, value, vl);
-	}
-	else if constexpr (std::is_same_v<T, int32_t>) {
-		if constexpr (LMUL == M1) __riscv_vse32_v_i32m1(base, value, vl);
-		else if constexpr (LMUL == M2) __riscv_vse32_v_i32m2(base, value, vl);
-		else if constexpr (LMUL == M4) __riscv_vse32_v_i32m4(base, value, vl);
-		else if constexpr (LMUL == M8) __riscv_vse32_v_i32m8(base, value, vl);
 	}
 	else if constexpr (std::is_same_v<T, double>) {
 		if constexpr (LMUL == M1) __riscv_vse64_v_f64m1(base, value, vl);
@@ -65,17 +68,65 @@ inline void VECTOR_STORE(T* base, VecType value, size_t vl) {
 		else if constexpr (LMUL == M4) __riscv_vse64_v_f64m4(base, value, vl);
 		else if constexpr (LMUL == M8) __riscv_vse64_v_f64m8(base, value, vl);
 	}
+	else if constexpr (std::is_same_v<T, int8_t>) {
+		if constexpr (LMUL == MF8) __riscv_vse8_v_i8mf8(base, value, vl);
+		else if constexpr (LMUL == MF4) __riscv_vse8_v_i8mf4(base, value, vl);
+		else if constexpr (LMUL == MF2) __riscv_vse8_v_i8mf2(base, value, vl);
+		else if constexpr (LMUL == M1) __riscv_vse8_v_i8m1(base, value, vl);
+		else if constexpr (LMUL == M2) __riscv_vse8_v_i8m2(base, value, vl);
+		else if constexpr (LMUL == M4) __riscv_vse8_v_i8m4(base, value, vl);
+		else if constexpr (LMUL == M8) __riscv_vse8_v_i8m8(base, value, vl);
+	}
 	else if constexpr (std::is_same_v<T, int16_t>) {
-		if constexpr (LMUL == M1) __riscv_vse16_v_i16m1(base, value, vl);
+		if constexpr (LMUL == MF4) __riscv_vse16_v_i16mf4(base, value, vl);
+		else if constexpr (LMUL == MF2) __riscv_vse16_v_i16mf2(base, value, vl);
+		else if constexpr (LMUL == M1) __riscv_vse16_v_i16m1(base, value, vl);
 		else if constexpr (LMUL == M2) __riscv_vse16_v_i16m2(base, value, vl);
 		else if constexpr (LMUL == M4) __riscv_vse16_v_i16m4(base, value, vl);
 		else if constexpr (LMUL == M8) __riscv_vse16_v_i16m8(base, value, vl);
 	}
-	else if constexpr (std::is_same_v<T, int8_t>) {
-		if constexpr (LMUL == M1) __riscv_vse8_v_i8m1(base, value, vl);
-		else if constexpr (LMUL == M2) __riscv_vse8_v_i8m2(base, value, vl);
-		else if constexpr (LMUL == M4) __riscv_vse8_v_i8m4(base, value, vl);
-		else if constexpr (LMUL == M8) __riscv_vse8_v_i8m8(base, value, vl);
+	else if constexpr (std::is_same_v<T, int32_t>) {
+		if constexpr (LMUL == MF2) __riscv_vse32_v_i32mf2(base, value, vl);
+		else if constexpr (LMUL == M1) __riscv_vse32_v_i32m1(base, value, vl);
+		else if constexpr (LMUL == M2) __riscv_vse32_v_i32m2(base, value, vl);
+		else if constexpr (LMUL == M4) __riscv_vse32_v_i32m4(base, value, vl);
+		else if constexpr (LMUL == M8) __riscv_vse32_v_i32m8(base, value, vl);
+	}
+	else if constexpr (std::is_same_v<T, int64_t>) {
+		if constexpr (LMUL == M1) __riscv_vse64_v_i64m1(base, value, vl);
+		else if constexpr (LMUL == M2) __riscv_vse64_v_i64m2(base, value, vl);
+		else if constexpr (LMUL == M4) __riscv_vse64_v_i64m4(base, value, vl);
+		else if constexpr (LMUL == M8) __riscv_vse64_v_i64m8(base, value, vl);
+	}
+	else if constexpr (std::is_same_v<T, uint8_t>) {
+		if constexpr (LMUL == MF8) __riscv_vse8_v_u8mf8(base, value, vl);
+		else if constexpr (LMUL == MF4) __riscv_vse8_v_u8mf4(base, value, vl);
+		else if constexpr (LMUL == MF2) __riscv_vse8_v_u8mf2(base, value, vl);
+		else if constexpr (LMUL == M1) __riscv_vse8_v_u8m1(base, value, vl);
+		else if constexpr (LMUL == M2) __riscv_vse8_v_u8m2(base, value, vl);
+		else if constexpr (LMUL == M4) __riscv_vse8_v_u8m4(base, value, vl);
+		else if constexpr (LMUL == M8) __riscv_vse8_v_u8m8(base, value, vl);
+	}
+	else if constexpr (std::is_same_v<T, uint16_t>) {
+		if constexpr (LMUL == MF4) __riscv_vse16_v_u16mf4(base, value, vl);
+		else if constexpr (LMUL == MF2) __riscv_vse16_v_u16mf2(base, value, vl);
+		else if constexpr (LMUL == M1) __riscv_vse16_v_u16m1(base, value, vl);
+		else if constexpr (LMUL == M2) __riscv_vse16_v_u16m2(base, value, vl);
+		else if constexpr (LMUL == M4) __riscv_vse16_v_u16m4(base, value, vl);
+		else if constexpr (LMUL == M8) __riscv_vse16_v_u16m8(base, value, vl);
+	}
+	else if constexpr (std::is_same_v<T, uint32_t>) {
+		if constexpr (LMUL == MF2) __riscv_vse32_v_u32mf2(base, value, vl);
+		else if constexpr (LMUL == M1) __riscv_vse32_v_u32m1(base, value, vl);
+		else if constexpr (LMUL == M2) __riscv_vse32_v_u32m2(base, value, vl);
+		else if constexpr (LMUL == M4) __riscv_vse32_v_u32m4(base, value, vl);
+		else if constexpr (LMUL == M8) __riscv_vse32_v_u32m8(base, value, vl);
+	}
+	else if constexpr (std::is_same_v<T, uint64_t>) {
+		if constexpr (LMUL == M1) __riscv_vse64_v_u64m1(base, value, vl);
+		else if constexpr (LMUL == M2) __riscv_vse64_v_u64m2(base, value, vl);
+		else if constexpr (LMUL == M4) __riscv_vse64_v_u64m4(base, value, vl);
+		else if constexpr (LMUL == M8) __riscv_vse64_v_u64m8(base, value, vl);
 	}
 }
 

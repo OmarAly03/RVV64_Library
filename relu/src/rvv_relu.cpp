@@ -4,6 +4,16 @@
 
 using namespace std;
 
+/*********************************** Scalar Version ************************************/
+
+void relu_scalar(float* input, float* output, size_t size) {
+    for (size_t i = 0; i < size; i++) {
+        output[i] = input[i] > 0.0f ? input[i] : 0.0f;
+    }
+}
+
+/********************************* Vectorized Versions *********************************/
+
 void relu_e32m1(float* input, float* output, size_t size) {
     float* in_ptr = input;
     float* out_ptr = output;
@@ -72,8 +82,66 @@ void relu_e32m8(float* input, float* output, size_t size) {
 	}
 }
 
-void relu_scalar(float* input, float* output, size_t size) {
-    for (size_t i = 0; i < size; i++) {
-        output[i] = input[i] > 0.0f ? input[i] : 0.0f;
+/******************************** Tiled Scalar Version *********************************/
+
+void relu_tiled_scalar(float* input, float* output, size_t size, size_t TILE_SIZE) {
+    size_t tiles = (size + TILE_SIZE - 1) / TILE_SIZE; 
+
+    for (size_t t = 0; t < tiles; t++) {
+        size_t start = t * TILE_SIZE;
+        size_t end   = (start + TILE_SIZE < size) ? start + TILE_SIZE : size;
+        size_t tile_size = end - start;
+
+        relu_scalar(input + start, output + start, tile_size);
+    }
+}
+
+/****************************** Tiled Vectorized Versions ******************************/
+
+void relu_tiled_e32m1(float* input, float* output, size_t size, size_t TILE_SIZE) {
+    size_t tiles = (size + TILE_SIZE - 1) / TILE_SIZE;
+
+    for (size_t t = 0; t < tiles; t++) {
+        size_t start = t * TILE_SIZE;
+        size_t end = (start + TILE_SIZE < size) ? start + TILE_SIZE : size;
+        size_t tile_size = end - start;
+
+        relu_e32m1(input + start, output + start, tile_size);
+    }
+}
+
+void relu_tiled_e32m2(float* input, float* output, size_t size, size_t TILE_SIZE) {
+    size_t tiles = (size + TILE_SIZE - 1) / TILE_SIZE;
+
+    for (size_t t = 0; t < tiles; t++) {
+        size_t start = t * TILE_SIZE;
+        size_t end = (start + TILE_SIZE < size) ? start + TILE_SIZE : size;
+        size_t tile_size = end - start;
+
+        relu_e32m2(input + start, output + start, tile_size);
+    }
+}
+
+void relu_tiled_e32m4(float* input, float* output, size_t size, size_t TILE_SIZE) {
+    size_t tiles = (size + TILE_SIZE - 1) / TILE_SIZE;
+
+    for (size_t t = 0; t < tiles; t++) {
+        size_t start = t * TILE_SIZE;
+        size_t end = (start + TILE_SIZE < size) ? start + TILE_SIZE : size;
+        size_t tile_size = end - start;
+
+        relu_e32m4(input + start, output + start, tile_size);
+    }
+}
+
+void relu_tiled_e32m8(float* input, float* output, size_t size, size_t TILE_SIZE) {
+    size_t tiles = (size + TILE_SIZE - 1) / TILE_SIZE;
+
+    for (size_t t = 0; t < tiles; t++) {
+        size_t start = t * TILE_SIZE;
+        size_t end = (start + TILE_SIZE < size) ? start + TILE_SIZE : size;
+        size_t tile_size = end - start;
+
+        relu_e32m8(input + start, output + start, tile_size);
     }
 }

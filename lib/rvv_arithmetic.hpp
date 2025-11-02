@@ -1126,4 +1126,5 @@ inline auto VECTOR_MUL_MASKED(MaskType mask, VecType op1, Op2Type op2, size_t vl
     }
 }
 
+/*************************************************************************************************/
 #endif // RVV_ARITHMETIC_HPP

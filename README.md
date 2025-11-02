@@ -1,4 +1,4 @@
-# RISC-V Vector (RVV) Library – Matrix Multiplication & ReLU
+# RISC-V Vector (RVV) Library
 
 This branch contains RISC-V Vector implementations of common computational kernels with functional verification using ONNX models. The goal is to validate different RVV implementations by comparing them against ONNX golden reference outputs.
 

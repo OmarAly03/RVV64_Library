@@ -60,4 +60,38 @@ inline size_t SET_VECTOR_LENGTH(size_t avl) {
     return 0;
 }
 
+template<typename T, int LMUL>
+inline size_t SET_VECTOR_LENGTH_MAX(){
+	if constexpr (std::is_same_v<T, float> || std::is_same_v<T, int32_t> || std::is_same_v<T, uint32_t> ) {
+		if constexpr (LMUL == MF2) return __riscv_vsetvlmax_e32mf2();
+        else if constexpr (LMUL == M1) return __riscv_vsetvlmax_e32m1();
+        else if constexpr (LMUL == M2) return __riscv_vsetvlmax_e32m2();
+        else if constexpr (LMUL == M4) return __riscv_vsetvlmax_e32m4();
+        else if constexpr (LMUL == M8) return __riscv_vsetvlmax_e32m8();
+    }
+	else if constexpr (std::is_same_v<T, double> || std::is_same_v<T, int64_t> || std::is_same_v<T, uint64_t> ) {
+        if constexpr (LMUL == M1) return __riscv_vsetvlmax_e64m1();
+        else if constexpr (LMUL == M2) return __riscv_vsetvlmax_e64m2();
+        else if constexpr (LMUL == M4) return __riscv_vsetvlmax_e64m4();
+        else if constexpr (LMUL == M8) return __riscv_vsetvlmax_e64m8();
+    }
+	else if constexpr (std::is_same_v<T, _Float16> || std::is_same_v<T, int16_t> || std::is_same_v<T, uint16_t> ) {
+		if constexpr (LMUL == MF4) return __riscv_vsetvlmax_e16mf4();
+		else if constexpr (LMUL == MF2) return __riscv_vsetvlmax_e16mf2();
+        else if constexpr (LMUL == M1) return __riscv_vsetvlmax_e16m1();
+        else if constexpr (LMUL == M2) return __riscv_vsetvlmax_e16m2();
+        else if constexpr (LMUL == M4) return __riscv_vsetvlmax_e16m4();
+        else if constexpr (LMUL == M8) return __riscv_vsetvlmax_e16m8();
+    }
+	else if constexpr (std::is_same_v<T, int8_t> || std::is_same_v<T, uint8_t> ) {
+		if constexpr (LMUL == MF8) return __riscv_vsetvlmax_e8mf8();
+		else if constexpr (LMUL == MF4) return __riscv_vsetvlmax_e8mf4();
+		else if constexpr (LMUL == MF2) return __riscv_vsetvlmax_e8mf2();
+        else if constexpr (LMUL == M1) return __riscv_vsetvlmax_e8m1();
+        else if constexpr (LMUL == M2) return __riscv_vsetvlmax_e8m2();
+        else if constexpr (LMUL == M4) return __riscv_vsetvlmax_e8m4();
+        else if constexpr (LMUL == M8) return __riscv_vsetvlmax_e8m8();
+    }
+}
+
 #endif // RVV_SETVECTOR_LENGTH_HPP
