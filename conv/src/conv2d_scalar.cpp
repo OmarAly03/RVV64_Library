@@ -31,6 +31,7 @@
  * @param pad_h         Vertical padding (applied to top and bottom)
  * @param pad_w         Horizontal padding (applied to left and right)
  */
+
 void conv2d_scalar(
     const float* input, const float* kernel, float* output,
     int batch_size, int in_channels, int out_channels,

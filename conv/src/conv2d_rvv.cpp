@@ -357,6 +357,7 @@ void conv2d_e32m8(
 }
 
 
+#ifdef BUILD_RVV_CONV_MAIN
 int main() {
     std::cout << "=== RVV Conv2D Test ===" << std::endl;
     
@@ -442,3 +443,4 @@ int main() {
     std::cout << "Test completed!" << std::endl;
     return 0;
 }
+#endif // BUILD_RVV_CONV_MAIN
