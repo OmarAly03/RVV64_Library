@@ -130,4 +130,68 @@ inline void VECTOR_STORE(T* base, VecType value, size_t vl) {
 	}
 }
 
+template<typename T, int LMUL, typename VecType>
+inline void VECTOR_STRIDED_STORE(T* base, ptrdiff_t stride, VecType value, size_t vl) {
+	if constexpr (std::is_same_v<T, float>) {
+		if constexpr (LMUL == M1) __riscv_vsse32_v_f32m1(base, stride, value, vl);
+		else if constexpr (LMUL == M2) __riscv_vsse32_v_f32m2(base, stride, value, vl);
+		else if constexpr (LMUL == M4) __riscv_vsse32_v_f32m4(base, stride, value, vl);
+		else if constexpr (LMUL == M8) __riscv_vsse32_v_f32m8(base, stride, value, vl);
+	}
+	else if constexpr (std::is_same_v<T, int32_t>) {
+		if constexpr (LMUL == M1) __riscv_vsse32_v_i32m1(base, stride, value, vl);
+		else if constexpr (LMUL == M2) __riscv_vsse32_v_i32m2(base, stride, value, vl);
+		else if constexpr (LMUL == M4) __riscv_vsse32_v_i32m4(base, stride, value, vl);
+		else if constexpr (LMUL == M8) __riscv_vsse32_v_i32m8(base, stride, value, vl);
+	}
+	else if constexpr (std::is_same_v<T, double>) {
+		if constexpr (LMUL == M1) __riscv_vsse64_v_f64m1(base, stride, value, vl);
+		else if constexpr (LMUL == M2) __riscv_vsse64_v_f64m2(base, stride, value, vl);
+		else if constexpr (LMUL == M4) __riscv_vsse64_v_f64m4(base, stride, value, vl);
+		else if constexpr (LMUL == M8) __riscv_vsse64_v_f64m8(base, stride, value, vl);
+	}
+	else if constexpr (std::is_same_v<T, int64_t>) {
+		if constexpr (LMUL == M1) __riscv_vsse64_v_i64m1(base, stride, value, vl);
+		else if constexpr (LMUL == M2) __riscv_vsse64_v_i64m2(base, stride, value, vl);
+		else if constexpr (LMUL == M4) __riscv_vsse64_v_i64m4(base, stride, value, vl);
+		else if constexpr (LMUL == M8) __riscv_vsse64_v_i64m8(base, stride, value, vl);
+	}
+	else if constexpr (std::is_same_v<T, int16_t>) {
+		if constexpr (LMUL == M1) __riscv_vsse16_v_i16m1(base, stride, value, vl);
+		else if constexpr (LMUL == M2) __riscv_vsse16_v_i16m2(base, stride, value, vl);
+		else if constexpr (LMUL == M4) __riscv_vsse16_v_i16m4(base, stride, value, vl);
+		else if constexpr (LMUL == M8) __riscv_vsse16_v_i16m8(base, stride, value, vl);
+	}
+	else if constexpr (std::is_same_v<T, int8_t>) {
+		if constexpr (LMUL == M1) __riscv_vsse8_v_i8m1(base, stride, value, vl);
+		else if constexpr (LMUL == M2) __riscv_vsse8_v_i8m2(base, stride, value, vl);
+		else if constexpr (LMUL == M4) __riscv_vsse8_v_i8m4(base, stride, value, vl);
+		else if constexpr (LMUL == M8) __riscv_vsse8_v_i8m8(base, stride, value, vl);
+	}
+	else if constexpr (std::is_same_v<T, uint32_t>) {
+		if constexpr (LMUL == M1) __riscv_vsse32_v_u32m1(base, stride, value, vl);
+		else if constexpr (LMUL == M2) __riscv_vsse32_v_u32m2(base, stride, value, vl);
+		else if constexpr (LMUL == M4) __riscv_vsse32_v_u32m4(base, stride, value, vl);
+		else if constexpr (LMUL == M8) __riscv_vsse32_v_u32m8(base, stride, value, vl);
+	}
+	else if constexpr (std::is_same_v<T, uint64_t>) {
+		if constexpr (LMUL == M1) __riscv_vsse64_v_u64m1(base, stride, value, vl);
+		else if constexpr (LMUL == M2) __riscv_vsse64_v_u64m2(base, stride, value, vl);
+		else if constexpr (LMUL == M4) __riscv_vsse64_v_u64m4(base, stride, value, vl);
+		else if constexpr (LMUL == M8) __riscv_vsse64_v_u64m8(base, stride, value, vl);
+	}
+	else if constexpr (std::is_same_v<T, uint16_t>) {
+		if constexpr (LMUL == M1) __riscv_vsse16_v_u16m1(base, stride, value, vl);
+		else if constexpr (LMUL == M2) __riscv_vsse16_v_u16m2(base, stride, value, vl);
+		else if constexpr (LMUL == M4) __riscv_vsse16_v_u16m4(base, stride, value, vl);
+		else if constexpr (LMUL == M8) __riscv_vsse16_v_u16m8(base, stride, value, vl);
+	}
+	else if constexpr (std::is_same_v<T, uint8_t>) {
+		if constexpr (LMUL == M1) __riscv_vsse8_v_u8m1(base, stride, value, vl);
+		else if constexpr (LMUL == M2) __riscv_vsse8_v_u8m2(base, stride, value, vl);
+		else if constexpr (LMUL == M4) __riscv_vsse8_v_u8m4(base, stride, value, vl);
+		else if constexpr (LMUL == M8) __riscv_vsse8_v_u8m8(base, stride, value, vl);
+	}
+}
+
 #endif // RVV_VECTOR_STORE_HPP
