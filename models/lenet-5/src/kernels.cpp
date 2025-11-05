@@ -11,6 +11,8 @@
 #include <cassert>   // For assert()
 #include <cstring>   // For std::memset
 #include <cfloat>    // For FLT_MAX
+#include "../include/exp.h"
+#include "rvv_defs.hpp"
 
 #include "../include/defs.hpp"
 
@@ -207,10 +209,6 @@ void bias_add_scalar(const float* input, const float* bias, float* output,
     }
 }
 
-/**
- * ### NEW PLACEHOLDER KERNEL ###
- * Element-wise addition of two tensors.
- */
 void tensor_add_scalar(const float* input_a, const float* input_b, float* output,
                            size_t size) {
     for (size_t i = 0; i < size; ++i) {
@@ -218,10 +216,6 @@ void tensor_add_scalar(const float* input_a, const float* input_b, float* output
     }
 }
 
-/**
- * ### NEW PLACEHOLDER KERNEL ###
- * LogSoftmax implementation.
- */
 void softmax_scalar(float* input, float* output, size_t size) {
     // Pass 1: Find Max
     float max_val = -__builtin_inff();
@@ -243,3 +237,283 @@ void softmax_scalar(float* input, float* output, size_t size) {
         output[i] /= sum;
     }
 }
+
+/********************************************************************************************/
+
+void dense_e32m8(const float* input, const float* weights, const float* bias,
+                   float* output, size_t in_features, size_t out_features) {
+    for (size_t out_f = 0; out_f < out_features; ++out_f) {
+        
+        const float* a_ptr = input;
+        const float* b_ptr = &weights[out_f * in_features];
+        size_t cnt = in_features;
+        size_t vl;
+
+        vfloat32m8_t v_sum = __riscv_vfmv_v_f_f32m8(0.0f, __riscv_vsetvl_e32m8(in_features));
+
+        for (; cnt > 0; cnt -= vl) {
+            vl = __riscv_vsetvl_e32m8(cnt);
+            vfloat32m8_t v_a = __riscv_vle32_v_f32m8(a_ptr, vl);
+            vfloat32m8_t v_b = __riscv_vle32_v_f32m8(b_ptr, vl);
+            v_sum = __riscv_vfmacc_vv_f32m8(v_sum, v_a, v_b, vl);
+            a_ptr += vl;
+            b_ptr += vl;
+        }
+
+        vfloat32m1_t v_scalar_sum = __riscv_vfmv_v_f_f32m1(0.0f, __riscv_vsetvl_e32m1(1));
+        v_scalar_sum = __riscv_vfredusum_vs_f32m8_f32m1(v_sum, v_scalar_sum, __riscv_vsetvl_e32m8(in_features));
+        float sum = __riscv_vfmv_f_s_f32m1_f32(v_scalar_sum);
+
+        output[out_f] = sum + bias[out_f];
+    }
+}
+
+void tensor_add_e32m8(const float* input_a, const float* input_b, float* output,
+                           size_t size) {
+    const float* in_a_ptr = input_a;
+    const float* in_b_ptr = input_b;
+    float* out_ptr = output;
+    
+    size_t cnt = size;
+    size_t vl;
+
+    while (cnt > 0) {
+        vl = __riscv_vsetvl_e32m8(cnt);
+        vfloat32m8_t v_a = __riscv_vle32_v_f32m8(in_a_ptr, vl);
+        vfloat32m8_t v_b = __riscv_vle32_v_f32m8(in_b_ptr, vl);
+        vfloat32m8_t v_out = __riscv_vfadd_vv_f32m8(v_a, v_b, vl);
+        __riscv_vse32_v_f32m8(out_ptr, v_out, vl);
+        in_a_ptr += vl;
+        in_b_ptr += vl;
+        out_ptr += vl;
+        cnt -= vl;
+    }
+}
+
+void softmax_vec(const float *i, float *o, uint64_t channels,
+                 uint64_t innerSize) {
+
+  size_t avl = innerSize;
+  size_t vl;
+
+  // Stripmining pointers
+  float *_i = (float *)i;
+  float *_o = (float *)o;
+  // Channel pointers
+  float *__i = (float *)i;
+  float *__o = (float *)o;
+
+  // Vector registers
+  vfloat32m1_t max_chunk_v;
+  vfloat32m1_t buf_chunk_v;
+  vfloat32m1_t num_chunk_v;
+  vfloat32m1_t den_chunk_v;
+  vfloat32m1_t res_chunk_v;
+
+  // Stripmine on innerSize
+  for (vl = __riscv_vsetvl_e32m1(avl); avl > 0; avl -= vl) {
+
+    vl = __riscv_vsetvl_e32m1(avl);
+
+    /*
+      Calculate the maximum along the channel dimension
+    */
+
+    // Initialize the max vector
+    max_chunk_v = __riscv_vle32_v_f32m1(__i, vl);
+    // Bump the pointer
+    __i += innerSize;
+    for (uint64_t ch = 1; ch < channels; ++ch) {
+      // Load a chunk of the input vector
+      buf_chunk_v = __riscv_vle32_v_f32m1(__i, vl);
+      // Bump the channel pointer
+      __i += innerSize;
+      // Calculate the elm-wise maximum between the two chunks
+      max_chunk_v = __riscv_vfmax_vv_f32m1(max_chunk_v, buf_chunk_v, vl);
+    }
+    // Restore the channel pointer
+    __i = _i;
+
+    /*
+      Fetch, subtract, exponentiate along the channel dimension
+    */
+
+    // Initialize accumulator
+    den_chunk_v = __riscv_vfmv_v_f_f32m1(0, vl);
+    for (uint64_t ch = 0; ch < channels; ++ch) {
+      // Fetch one chunk from channel ch
+      buf_chunk_v = __riscv_vle32_v_f32m1(__i, vl);
+      // Subtract the maximum
+      buf_chunk_v = __riscv_vfsub_vv_f32m1(buf_chunk_v, max_chunk_v, vl);
+      // Exponentiate
+      buf_chunk_v = __exp_2xf32(buf_chunk_v, vl);
+      // Store the numerator to memory
+      __riscv_vse32_v_f32m1(__o, buf_chunk_v, vl);
+      // Accumulate
+      den_chunk_v = __riscv_vfadd_vv_f32m1(den_chunk_v, buf_chunk_v, vl);
+      // Bump channel pointers
+      __i += innerSize;
+      __o += innerSize;
+    }
+    // Restore the pointers
+    __i = _i;
+    __o = _o;
+
+    /*
+      Divide by the computed sum
+    */
+
+    for (uint64_t ch = 0; ch < channels; ++ch) {
+      // Load numerator from memory
+      num_chunk_v = __riscv_vle32_v_f32m1(__o, vl);
+      // Divide
+      res_chunk_v = __riscv_vfdiv_vv_f32m1(num_chunk_v, den_chunk_v, vl);
+      // Store the result to memory
+      __riscv_vse32_v_f32m1(__o, res_chunk_v, vl);
+      // Bump channel pointers
+      __o += innerSize;
+    }
+    // Bump stripmining pointers
+    _i += vl;
+    _o += vl;
+    // Reset channel pointers
+    __i = _i;
+    __o = _o;
+  }
+}
+
+void relu_e32m8(float* input, float* output, size_t size) {
+	float* in_ptr = input;
+	float* out_ptr = output;
+	
+	for (size_t cnt = size; cnt > 0; ) {
+		size_t vl = SET_VECTOR_LENGTH<float, M8>(cnt);
+		auto v_input = VECTOR_LOAD<float, M8>(in_ptr, vl);
+		auto v_zero = VECTOR_MOVE<float, M8>(0.0f, vl);
+		auto v_result = VECTOR_MAX<float, M8>(v_input, v_zero, vl);
+		VECTOR_STORE<float, M8>(out_ptr, v_result, vl);
+		
+		cnt -= vl;
+		in_ptr += vl;
+		out_ptr += vl;
+	}
+}
+
+void bias_add_e32m8(const float* input, const float* bias, float* output,
+                      size_t batch_size, size_t channels,
+                      size_t height, size_t width) {
+    
+    size_t channel_size = height * width;
+    
+    for (size_t b = 0; b < batch_size; ++b) {
+        for (size_t c = 0; c < channels; ++c) {
+            float b_val = bias[c];
+            size_t offset = (b * channels + c) * channel_size;
+            
+            const float* in_ptr = input + offset;
+            float* out_ptr = output + offset;
+            
+            size_t cnt = channel_size;
+            size_t vl;
+            
+            while (cnt > 0) {
+                vl = __riscv_vsetvl_e32m8(cnt);
+                vfloat32m8_t v_input = __riscv_vle32_v_f32m8(in_ptr, vl);
+                vfloat32m8_t v_output = __riscv_vfadd_vf_f32m8(v_input, b_val, vl);
+                __riscv_vse32_v_f32m8(out_ptr, v_output, vl);
+                
+                in_ptr += vl;
+                out_ptr += vl;
+                cnt -= vl;
+            }
+        }
+    }
+}
+
+// RVV optimized 2D convolution (e32m8)
+void conv2d_e32m8(
+    const float* input, const float* kernel, float* output,
+    int batch_size, int in_channels, int out_channels,
+    int input_h, int input_w, int kernel_h, int kernel_w,
+    int stride_h, int stride_w, int pad_h, int pad_w) {
+    
+    // Calculate output dimensions
+    int out_height = (input_h + 2 * pad_h - kernel_h) / stride_h + 1;
+    int out_width = (input_w + 2 * pad_w - kernel_w) / stride_w + 1;
+    
+    // Initialize output to zero
+    size_t output_size = batch_size * out_channels * out_height * out_width;
+    std::memset(output, 0, output_size * sizeof(float));
+    
+    for (int b = 0; b < batch_size; ++b) {
+        for (int oc = 0; oc < out_channels; ++oc) {
+            for (int oh = 0; oh < out_height; ++oh) {
+                for (int ow = 0; ow < out_width; ++ow) {
+                    
+                    // Calculate input region bounds
+                    int in_h_start = oh * stride_h - pad_h;
+                    int in_w_start = ow * stride_w - pad_w;
+                    
+                    float sum = 0.0f;
+                    
+                    for (int ic = 0; ic < in_channels; ++ic) {
+                        for (int kh = 0; kh < kernel_h; ++kh) {
+                            int in_h = in_h_start + kh;
+                            
+                            // Skip if outside input bounds
+                            if (in_h < 0 || in_h >= input_h) {
+                                continue;
+                            }
+                            
+                            int kw = 0;
+                            int in_w = in_w_start;
+                            
+                            // Skip negative width indices
+                            while (kw < kernel_w && in_w + kw < 0) {
+                                kw++;
+                            }
+                            
+                            size_t vl;
+                            for (; kw < kernel_w; kw += vl) {
+                                int remaining = kernel_w - kw;
+                                int valid_end = input_w - in_w - kw;
+                                int processable = std::min(remaining, valid_end);
+                                
+                                if (processable <= 0) break;
+                                
+                                vl = SET_VECTOR_LENGTH<float, M8>(processable);
+
+                                // Load input and kernel vectors using wrappers
+                                vfloat32m8_t v_input = VECTOR_LOAD<float, M8>(
+                                    &input[b * in_channels * input_h * input_w +
+                                           ic * input_h * input_w +
+                                           in_h * input_w + in_w + kw], vl);
+
+                                vfloat32m8_t v_kernel = VECTOR_LOAD<float, M8>(
+                                    &kernel[oc * in_channels * kernel_h * kernel_w +
+                                           ic * kernel_h * kernel_w +
+                                           kh * kernel_w + kw], vl);
+
+                                // Element-wise multiply
+                                vfloat32m8_t v_mult = VECTOR_MUL_VV<float, M8>(v_input, v_kernel, vl);
+
+                                // Reduce sum horizontally
+                                vfloat32m1_t v_zero = VECTOR_BROADCAST<float, M1>(0.0f, 1);
+                                vfloat32m1_t v_sum = __riscv_vfredusum_vs_f32m8_f32m1(v_mult, v_zero, vl);
+
+                                // Extract scalar sum and add to total
+                                sum += __riscv_vfmv_f_s_f32m1_f32(v_sum);
+                            }
+                        }
+                    }
+                    
+                    // Store the accumulated result
+                    output[b * out_channels * out_height * out_width +
+                           oc * out_height * out_width +
+                           oh * out_width + ow] = sum;
+                }
+            }
+        }
+    }
+}
+
