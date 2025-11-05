@@ -11,7 +11,7 @@ INCLUDES = -Iinclude -I../../lib
 SRCS = main.cpp src/lenet5.cpp src/kernels.cpp
 
 # Output binary
-TARGET = main
+TARGET = output_files/main
 
 # Default target
 all: $(TARGET)
