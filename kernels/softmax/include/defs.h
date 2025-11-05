@@ -2,14 +2,18 @@
 #define DEFS_H
 
 #include <cstddef>
+#include <cstdint>
 
-void softmax_scalar(float* input, float* output, std::size_t size);
+// New scalar softmax prototype
+void softmax(const float *i, float *o, float *buf,
+             uint64_t channels, uint64_t innerSize);
 
-void softmax_e32m1(float* input, float* output, std::size_t size);
-void softmax_e32m2(float* input, float* output, std::size_t size);
-void softmax_e32m4(float* input, float* output, std::size_t size);
-void softmax_e32m8(float* input, float* output, std::size_t size);
+// New vector softmax prototype
+void softmax_vec(const float *i, float *o, uint64_t channels,
+                 uint64_t innerSize);
 
+
+// Utility functions (unchanged)
 void write_matrix_to_file(const char* filename, float* matrix, std::size_t rows, std::size_t cols);
 void write_matrix_binary(const char* filename, float* matrix, std::size_t count);
 

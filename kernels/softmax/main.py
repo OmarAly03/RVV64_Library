@@ -31,30 +31,45 @@ except FileNotFoundError:
     sys.exit(1)
 
 
-# Default size
-N = 16
+# ==== Parse Arguments ====
+CHANNELS = 4
+INNER_SIZE = 128
 
-if len(sys.argv) == 2:
+if len(sys.argv) == 3:
     try:
-        N = int(sys.argv[1])
+        CHANNELS = int(sys.argv[1])
+        INNER_SIZE = int(sys.argv[2])
+        if CHANNELS <= 0 or INNER_SIZE <= 0:
+            raise ValueError
     except ValueError:
-        print(f"Invalid size argument '{sys.argv[1]}'. Using default N=16.")
-        N = 16
+        print(f"Invalid arguments '{sys.argv[1]}', '{sys.argv[2]}'. Using defaults.")
+        CHANNELS = 4
+        INNER_SIZE = 128
+else:
+    print(f"Usage: python3 main.py <channels> <innerSize>. Using defaults.")
+
+N = CHANNELS * INNER_SIZE
+shape = (CHANNELS, INNER_SIZE)
 
 # Load input data
 input_path = os.path.join(SCRIPT_DIR, "./output_files/input.bin")
 try:
-    input_data = np.fromfile(input_path, dtype=np.float32).reshape(N)
+    # Reshape the flat input data to the correct 2D shape
+    input_data = np.fromfile(input_path, dtype=np.float32).reshape(shape)
 except FileNotFoundError:
     print(f"Error: Input data not found at {input_path}")
     print("Please ensure QEMU simulation (run_softmax) ran successfully.")
     sys.exit(1)
+except ValueError:
+    print(f"Error: Input data size mismatch. Expected {N} elements for shape {shape}.")
+    sys.exit(1)
 
 
-print(f"\nSoftmax validation on {N} elements")
+print(f"\nSoftmax validation on shape {shape} (Total {N} elements)")
 
 # ==== ONNX Golden Reference (using ONNXRuntime) ====
 input_names = [input_node.name for input_node in onnx_model.graph.input]
+# Feed the 2D [CHANNELS, INNER_SIZE] array to ONNX
 onnx_ref = session.run(None, {input_names[0]: input_data})[0]
 
 # ONNX --> golden reference
@@ -64,18 +79,19 @@ c_ref = onnx_ref
 def load_result(filename, shape):
     path = os.path.join(SCRIPT_DIR, f"./output_files/{filename}")
     try:
+        # Reshape the flat output data to the correct 2D shape
         return np.fromfile(path, dtype=np.float32).reshape(shape)
     except FileNotFoundError:
         print(f"Warning: Output file not found: {path}. Skipping.")
         return None
+    except ValueError:
+        print(f"Warning: Output file {filename} size mismatch. Skipping.")
+        return None
 
 implementations = [
     ("ONNX Golden Ref", onnx_ref),
-    ("C Scalar", load_result("softmax_scalar.bin", N)),
-    ("C Vectorized (e32m1)", load_result("softmax_e32m1.bin", N)),
-    ("C Vectorized (e32m2)", load_result("softmax_e32m2.bin", N)),
-    ("C Vectorized (e32m4)", load_result("softmax_e32m4.bin", N)),
-    ("C Vectorized (e32m8)", load_result("softmax_e32m8.bin", N)),
+    ("C Scalar", load_result("softmax_scalar.bin", shape)),
+    ("C Vectorized", load_result("softmax_vector.bin", shape)),
 ]
 
 # ==== Results Table ====
@@ -90,7 +106,3 @@ for name, result in implementations:
     mae = max_abs_error(c_ref, result)
     snr = snr_db(c_ref, result)
     print(f"{name:<30}{mae:<20.6g}{snr:<20.6g}")
-
-# Note: Due to floating-point inaccuracies in expf and reductions,
-# you should expect very small errors (e.g., 1e-7) and a high (but not infinite) SNR.
-# This is normal for float-precision softmax.
