@@ -7,8 +7,9 @@ void conv_transpose_2d_scalar(
     int input_h, int input_w, int kernel_h, int kernel_w,
     int stride_h, int stride_w, int pad_h, int pad_w) {
 
-    int out_height = (input_h - 1) * stride_h - 2 * pad_h + kernel_h;
-    int out_width = (input_w - 1) * stride_w - 2 * pad_w + kernel_w;
+    // Support both stride=1 and stride=2, no padding
+    int out_height = (input_h - 1) * stride_h + kernel_h;
+    int out_width = (input_w - 1) * stride_w + kernel_w;
 
     size_t output_size = batch_size * out_channels * out_height * out_width;
     std::memset(output, 0, output_size * sizeof(float));

@@ -51,15 +51,16 @@ if __name__ == "__main__":
     out_channels = 1
     input_h, input_w = 4, 4
     kernel_h, kernel_w = 3, 3
-    stride = [2, 2]
+    stride = [1, 1]
     padding = [0, 0]
 
+    # Parse arguments: input_size in_channels out_channels [stride]
     if len(sys.argv) >= 5:
         input_h = input_w = int(sys.argv[1])
         in_channels = int(sys.argv[2])
         out_channels = int(sys.argv[3])
-        padding_val = int(sys.argv[4])
-        padding = [padding_val, padding_val]
+        stride_val = int(sys.argv[4])
+        stride = [stride_val, stride_val]
     elif len(sys.argv) >= 4:
         input_h = input_w = int(sys.argv[1])
         in_channels = int(sys.argv[2])

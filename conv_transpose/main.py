@@ -15,20 +15,19 @@ onnx_model = onnx.load(os.path.join(SCRIPT_DIR, "./output_files/conv_transpose.o
 onnx.checker.check_model(onnx_model)
 session = ort.InferenceSession(os.path.join(SCRIPT_DIR, "./output_files/conv_transpose.onnx"))
 
-# Fixed parameters: 3x3 kernel, stride 2, configurable padding
+# Fixed parameters: 3x3 kernel, configurable stride, no padding
 input_size = 4
 kernel_size = 3  # Fixed
-stride = 2       # Fixed
-padding = 0      # Default: no padding
+stride = 1       # Default
 in_channels = 1
 out_channels = 1
 
-# Parse command line arguments (input_size in_channels out_channels [padding])
+# Parse command line arguments (input_size in_channels out_channels [stride])
 if len(sys.argv) >= 5:
     input_size = int(sys.argv[1])
     in_channels = int(sys.argv[2])
     out_channels = int(sys.argv[3])
-    padding = int(sys.argv[4])
+    stride = int(sys.argv[4])
 elif len(sys.argv) >= 4:
     input_size = int(sys.argv[1])
     in_channels = int(sys.argv[2])
@@ -36,12 +35,12 @@ elif len(sys.argv) >= 4:
 elif len(sys.argv) >= 2:
     input_size = int(sys.argv[1])
 
-# Calculate output dimensions
-out_height = (input_size - 1) * stride - 2 * padding + kernel_size
-out_width = (input_size - 1) * stride - 2 * padding + kernel_size
+# Calculate output dimensions based on stride
+out_height = (input_size - 1) * stride + kernel_size
+out_width = (input_size - 1) * stride + kernel_size
 
 print(f"\nTransposed Convolution: {input_size}x{input_size} input, {kernel_size}x{kernel_size} kernel (fixed)")
-print(f"Stride: {stride} (fixed), Padding: {padding}, Channels: {in_channels}->{out_channels}")
+print(f"Stride: {stride}, No Padding, Channels: {in_channels}->{out_channels}")
 print(f"Output: {out_height}x{out_width}")
 
 # Load input and kernel data
@@ -59,11 +58,11 @@ scalar_path = os.path.join(SCRIPT_DIR, "./output_files/output_scalar.bin")
 if os.path.exists(scalar_path):
     c_scalar = np.fromfile(scalar_path, dtype=np.float32).reshape(1, out_channels, out_height, out_width)
 
-# ==== C Vectorized (e32m8) (optional if present) ====
-c_e32m8 = None
-e32m8_path = os.path.join(SCRIPT_DIR, "./output_files/output_e32m8.bin")
-if os.path.exists(e32m8_path):
-    c_e32m8 = np.fromfile(e32m8_path, dtype=np.float32).reshape(1, out_channels, out_height, out_width)
+# ==== C Vectorized (e32m2) (optional if present) ====
+c_e32m2 = None
+e32m2_path = os.path.join(SCRIPT_DIR, "./output_files/output_e32m2.bin")
+if os.path.exists(e32m2_path):
+    c_e32m2 = np.fromfile(e32m2_path, dtype=np.float32).reshape(1, out_channels, out_height, out_width)
 
 # ONNX --> golden reference
 c_ref = onnx_ref
@@ -72,8 +71,8 @@ c_ref = onnx_ref
 implementations = [("ONNX Golden Ref", onnx_ref)]
 if c_scalar is not None:
     implementations.append(("C Scalar", c_scalar))
-if c_e32m8 is not None:
-    implementations.append(("C Vectorized (e32m8)", c_e32m8))
+if c_e32m2 is not None:
+    implementations.append(("C Vectorized (e32m2)", c_e32m2))
 
 print(f"\n{'Implementation':<25}{'Max Abs Error':<20}{'SNR (dB)':<20}")
 print("-" * 60)
