@@ -1,18 +1,19 @@
 import os
+import sys
 import onnx
 from onnx import helper, TensorProto
 
-# For Softmax, we expect a 1D tensor of shape [N]
-# We'll define the input shape as [None] to be flexible
-input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, [None]) 
-output_tensor = helper.make_tensor_value_info("output", TensorProto.FLOAT, [None]) 
+# For Softmax, we expect a 2D tensor of shape [CHANNELS, INNER_SIZE]
+# We'll define the input shape as [None, None] to be flexible
+input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, [None, None]) 
+output_tensor = helper.make_tensor_value_info("output", TensorProto.FLOAT, [None, None]) 
 
-# Softmax node. axis=0 means softmax is applied along the 0-th (and only) axis.
+# Softmax node. axis=0 means softmax is applied along the 0-th (channels) dimension.
 softmax_node = helper.make_node(
     "Softmax",
     inputs=["input"],
     outputs=["output"],
-    axis=0  # Apply softmax along the first dimension
+    axis=0  # Apply softmax along the first dimension (channels)
 )
 
 graph = helper.make_graph(
