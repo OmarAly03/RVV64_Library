@@ -22,7 +22,7 @@ int main() {
         LeNet5 model("./model_parameters");
 
         // 2. Load the input image data
-        std::vector<float> image_data = load_image_to_vector("./image_binaries/3.bin");
+        std::vector<float> image_data = load_image_to_vector("./image_binaries/0.bin");
         
         // 3. Run prediction
         int prediction = model.predict(image_data);
