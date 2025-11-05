@@ -1,126 +1,116 @@
-# RISC-V Vector (RVV) Library
+# RVV64 Library
 
-This branch contains RISC-V Vector implementations of common computational kernels with functional verification using ONNX models. The goal is to validate different RVV implementations by comparing them against ONNX golden reference outputs.
+The **RVV64 Library** is a modular collection of **RISC-V Vector (RVV) kernel implementations** and utilities for accelerating common deep learning and tensor operations using the **RVV (RISC-V Vector) extension**.  
+It includes both **scalar** (reference) and **vectorized** implementations, as well as scripts to generate, test, and validate results using **ONNX models**.
 
-## Kernels
+---
 
-### 1. Matrix Multiplication (`matmul/`)
+## 🧠 Overview
 
-**ONNX model:** `matrix_multiply.onnx`
+This repository serves as a foundation for developing and benchmarking vectorized operators under the **RVV64** architecture.  
+Each operator (e.g., `softmax`, `matmul`, `relu`, etc.) has:
+- Scalar and vector RVV C++ implementations  
+- Matching ONNX model generation scripts  
+- Python tools for generating inputs and validating outputs  
+- Makefiles for building and running experiments
 
-**Implementations:**
-- Python scalar (`matmult.py`)
-- C scalar (`matmul_scalar`)
-- **RISC-V Vector intrinsics:**
-  - `matmul_e32m1` (LMUL=1)
-  - `matmul_e32m2` (LMUL=2)
-  - `matmul_e32m4` (LMUL=4)
-  - `matmul_e32m8` (LMUL=8)
+The project also includes a full example model (**LeNet-5**) built from the available kernels to demonstrate end-to-end inference with RVV acceleration.
 
-**Features:**
-- Supports arbitrary matrix sizes (M×K @ K×N → M×N)
-- Vectorized across output matrix columns
-- Fused multiply-accumulate (FMA) operations
+---
 
-**Parameters:**
-- `SIZE`: The size of the matrices.
+## 📁 Repository Structure
 
-### 2. ReLU Activation (`relu/`)
+```
+RVV64_Library/
+│
+├── lib/                      # Core vector intrinsic wrappers and utilities
+│   ├── rvv_arithmetic.hpp
+│   ├── rvv_vector_load.hpp
+│   ├── rvv_vector_store.hpp
+│   └── ...
+│
+├── kernels/                  # Individual kernel implementations
+│   ├── bias_add/
+│   ├── dense/
+│   ├── matmul/
+│   ├── relu/
+│   ├── softmax/
+│   └── tensor_add/
+│
+├── conv_transpose/           # Transposed convolution (deconvolution) operator
+├── maxpool/                  # Max pooling operator
+├── scatter_elements/         # Scatter elements operator
+├── nms/                      # Non-Maximum Suppression operator
+│
+├── models/
+│   └── lenet-5/              # Complete LeNet-5 implementation using RVV kernels
+│
+├── requirements.txt          # Python dependencies
+└── README.md                 # This file
+```
 
-**ONNX model:** `relu.onnx`
+---
 
-**Implementations:**
-- Python scalar (`relu_scalar.py`)
-- C scalar (`relu_scalar`)
-- **RISC-V Vector intrinsics:**
-  - `relu_e32m1` (LMUL=1)
-  - `relu_e32m2` (LMUL=2) 
-  - `relu_e32m4` (LMUL=4)
-  - `relu_e32m8` (LMUL=8)
+## ⚙️ Installation
 
-**Parameters:**
-- `SIZE`: The size of the input tensor.
+### 1. Prerequisites
 
-### 3. Non-Maximum Suppression (`nms/`)
+You’ll need:
+- **RISC-V GCC toolchain** supporting RVV (e.g., `riscv64-unknown-elf-g++`)
+- **Python 3.10+**
+- **ONNX** and related packages (`onnxruntime`, `numpy`, etc.)
+- **CMake** and **Make**
 
-**ONNX model:** `nms.onnx`
-
-**Implementations:**
-- Python reference (`nms_utils.py`)
-- C scalar (`nms_scalar`)
-- **RISC-V Vector intrinsics:**
-  - `nms_e32m1` (LMUL=1)
-  - `nms_e32m2` (LMUL=2)
-  - `nms_e32m4` (LMUL=4)
-  - `nms_e32m8` (LMUL=8)
-
-**Features:**
-- Implements the ONNX `NonMaxSuppression` operator.
-- Supports multi-batch and multi-class inputs.
-- Filters boxes by score and IoU thresholds.
-- Limits the number of output boxes per class.
-
-**Parameters:**
-- `BATCHES`: The number of batches.
-- `CLASSES`: The number of classes.
-- `SPATIAL`: The spatial dimension (number of boxes).
-- `MAX_BOXES`: The maximum number of output boxes per class.
-- `IOU_THRESH`: The IOU threshold.
-- `SCORE_THRESH`: The score threshold.
-
-## Installation
-
-1. **Install Python dependencies:**
+Install the Python requirements:
 ```bash
 pip install -r requirements.txt
 ```
-## Usage
 
-### Build and Run Tests
+---
 
-**Matrix Multiplication:**
+## 🧩 Building and Running Kernels
+
+Each kernel directory (e.g., `kernels/softmax`, `kernels/matmul`, etc.) contains:
+- `main.py` – generates ONNX model and binary test data  
+- `Makefile` – builds and runs the scalar and vector versions  
+- `run_<kernel>.cpp` – entry point for running the kernel  
+- `src/` – contains both RVV and scalar C++ implementations  
+
+---
+
+## 🧪 Example Model: LeNet-5
+
+The `models/lenet-5/` directory demonstrates how to compose the RVV kernels into a complete neural network model.  
+It includes:
+- Layer parameters in `model_parameters/`
+- Extracted sample images and binaries
+- A `Makefile` to build and run the full model on an RVV simulator or target
+
+Example:
 ```bash
-cd matmul/
-make clean
-make       
-make run SIZE=512    
-```
-
-**ReLU Activation:**
-```bash
-cd relu/
-make clean
-make         
-make run SIZE=4096    
-```
-
-**Non-Maximum Suppression:**
-```bash
-cd nms/
-make clean
+cd models/lenet-5
 make
-make run SPATIAL=4096 BATCHES=2 CLASSES=3
+make run
 ```
 
-### Python-only Testing (x86)
+---
 
-```bash
-# Matmul: can be run with no arguments (default size), one argument (SIZE), or three arguments (M, N, K)
-python3 matmul/main.py
-python3 matmul/main.py <SIZE>
-python3 matmul/main.py <M> <N> <K>
+## 🧰 Core Library (`lib/`)
 
-# ReLU: can be run with no arguments (default size) or one argument (SIZE)
-python3 relu/main.py
-python3 relu/main.py <SIZE>
+The `lib` folder contains reusable C++ headers wrapping **RVV intrinsics** for:
+- Arithmetic operations (`rvv_arithmetic.hpp`)
+- Vector loads/stores (`rvv_vector_load.hpp`, `rvv_vector_store.hpp`)
+- Bitwise and mask operations (`rvv_mask_ops.hpp`, `rvv_bitwise.hpp`)
+- MACC and min/max functions (`rvv_macc.hpp`, `rvv_minmax.hpp`)
+- Vector length setup (`rvv_setVectorLength.hpp`)
 
-# NMS: can be run with no arguments (default values) or six arguments
-python3 nms/main.py
-python3 nms/main.py <BATCHES> <CLASSES> <SPATIAL> <MAX_BOXES> <IOU_THRESH> <SCORE_THRESH>
-```
+These headers provide consistent, reusable building blocks for writing new kernels efficiently.
 
-## Performance Metrics
+---
 
-All kernels report:
-- **SNR (Signal-to-Noise Ratio):** Higher is better (∞ = perfect match)
-- **Max Absolute Error:** Lower is better (0 = perfect match)
+## 🧾 Results and Evaluation
+
+Each operator directory includes a `results.md` file summarizing:
+- Execution time (scalar vs RVV)
+- Vector configurations (e.g., `e32m1`, `e32m8`)
+- Observed performance gain or memory bandwidth efficiency
