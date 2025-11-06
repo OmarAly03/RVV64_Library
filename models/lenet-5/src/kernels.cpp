@@ -7,6 +7,7 @@
 #include <cstddef>   // For size_t
 #include <stdexcept> // For std::runtime_error
 #include <cmath>     // For exp
+#include <algorithm> // For std::min
 
 #include <cassert>   // For assert()
 #include <cstring>   // For std::memset
@@ -383,20 +384,20 @@ void softmax_vec(const float *i, float *o, uint64_t channels,
 }
 
 void relu_e32m8(float* input, float* output, size_t size) {
-	float* in_ptr = input;
-	float* out_ptr = output;
-	
-	for (size_t cnt = size; cnt > 0; ) {
-		size_t vl = SET_VECTOR_LENGTH<float, M8>(cnt);
-		auto v_input = VECTOR_LOAD<float, M8>(in_ptr, vl);
-		auto v_zero = VECTOR_MOVE<float, M8>(0.0f, vl);
-		auto v_result = VECTOR_MAX<float, M8>(v_input, v_zero, vl);
-		VECTOR_STORE<float, M8>(out_ptr, v_result, vl);
-		
-		cnt -= vl;
-		in_ptr += vl;
-		out_ptr += vl;
-	}
+    float* in_ptr = input;
+    float* out_ptr = output;
+    
+    for (size_t cnt = size; cnt > 0; ) {
+        size_t vl = SET_VECTOR_LENGTH<float, M8>(cnt);
+        auto v_input = VECTOR_LOAD<float, M8>(in_ptr, vl);
+        auto v_zero = VECTOR_MOVE<float, M8>(0.0f, vl);
+        auto v_result = VECTOR_MAX<float, M8>(v_input, v_zero, vl);
+        VECTOR_STORE<float, M8>(out_ptr, v_result, vl);
+        
+        cnt -= vl;
+        in_ptr += vl;
+        out_ptr += vl;
+    }
 }
 
 void bias_add_e32m8(const float* input, const float* bias, float* output,
@@ -429,6 +430,132 @@ void bias_add_e32m8(const float* input, const float* bias, float* output,
         }
     }
 }
+
+// ================== NEW MAXPOOL FUNCTIONS ==================
+
+// Helper macro for calculating output dimensions for pooling
+#define CALC_OUT_DIM(in_dim, k, s, ceil_mode) \
+    (ceil_mode ? ((in_dim - k + s - 1) / s + 1) : ((in_dim - k) / s + 1))
+
+// Tiling parameters (adjust as needed)
+#define TILE_H 14
+#define TILE_W 256 // Example: Process 256 output elements at a time horizontally
+
+/**
+ * @brief Processes a single tile of the maxpool operation (Vectorized)
+ */
+void maxpool_e32m8_tile(
+    const float* X, float* Y, int64_t* I,
+    size_t N, size_t C, size_t H, size_t W, size_t K, size_t S, bool ceil_mode,
+    size_t OH, size_t OW,
+    size_t tile_oh_start, size_t tile_ow_start,
+    size_t tile_oh_end, size_t tile_ow_end)
+{
+    for (size_t n = 0; n < N; ++n) {
+        for (size_t c = 0; c < C; ++c) {
+            const float* x_channel = X + (n * C + c) * H * W;
+            float* y_channel = Y + (n * C + c) * OH * OW;
+            int64_t* i_channel = I + (n * C + c) * OH * OW;
+            for (size_t oh = tile_oh_start; oh < tile_oh_end; ++oh) {
+                for (size_t ow = tile_ow_start; ow < tile_ow_end; ) {
+                    size_t current_tile_width = tile_ow_end - ow;
+                    size_t vl = __riscv_vsetvl_e32m8(current_tile_width);
+
+                    vfloat32m8_t max_vec = __riscv_vfmv_v_f_f32m8(-FLT_MAX, vl);
+                    vint32m8_t max_idx_vec32 = __riscv_vmv_v_x_i32m8(-1, vl);
+                    for (size_t kh = 0; kh < K; ++kh) {
+                        for (size_t kw = 0; kw < K; ++kw) {
+                            size_t ih = oh * S + kh;
+                            if (ih < H) {
+                                // Start of the horizontal stripe for this kernel pixel
+                                const float* x_ptr = x_channel + ih * W + ow * S + kw;
+                                
+                                // Create a vector of input width indices (iw)
+                                // iw = ow*S + kw + [0, 1, ..., vl-1] * S
+                                vuint32m8_t element_indices = __riscv_vid_v_u32m8(vl);
+                                vuint32m8_t iw_vec = __riscv_vadd_vx_u32m8(__riscv_vmul_vx_u32m8(element_indices, S, vl), ow * S + kw, vl);
+                                
+                                // Create mask for elements where iw < W
+                                vbool4_t load_mask = __riscv_vmsltu_vx_u32m8_b4(iw_vec, W, vl);
+
+                                // Load elements using strided load
+                                vfloat32m8_t x_vec = __riscv_vlse32_v_f32m8_m(load_mask, x_ptr, S * sizeof(float), vl);
+                                
+                                // Find where new x_vec is greater than current max
+                                vbool4_t is_greater_mask = __riscv_vmfgt_vv_f32m8_b4_m(load_mask, x_vec, max_vec, vl);
+                                
+                                // Update max_vec
+                                max_vec = __riscv_vfmax_vv_f32m8_m(is_greater_mask, max_vec, x_vec, vl);
+                                
+                                // Update indices
+                                // current_indices = (ih * W + kw) + (ow * S) + [0, 1, ..., vl-1] * S
+                                // No, current_indices = ih * W + iw_vec
+                                // current_indices = ih * W + (ow * S + kw) + element_indices * S
+                                int32_t current_idx_base = ih * W;
+                                vuint32m8_t offsets = __riscv_vmul_vx_u32m8(element_indices, S, vl);
+                                // We use vint32m8_t because vadd requires signed
+                                vint32m8_t current_indices = __riscv_vadd_vx_i32m8(__riscv_vreinterpret_v_u32m8_i32m8(offsets), current_idx_base + ow * S + kw, vl);
+                                
+                                max_idx_vec32 = __riscv_vmerge_vvm_i32m8(max_idx_vec32, current_indices, is_greater_mask, vl);
+                            }
+                        }
+                    }
+                    // Store the max values
+                    __riscv_vse32_v_f32m8(y_channel + oh * OW + ow, max_vec, vl);
+                    
+                    // --- Widen and Store Indices ---
+                    int64_t channel_offset = (n * C + c) * H * W;
+
+                    // Widen the 32-bit indices to 64-bit in two halves
+                    size_t current_vl_m8 = vl; // Save original vl
+                    size_t half_vl_m4 = __riscv_vsetvl_e32m4(current_vl_m8); // Use m4's vl for splitting m8
+
+                    vint32m4_t lo_idx32 = __riscv_vget_v_i32m8_i32m4(max_idx_vec32, 0);
+                    vint32m4_t hi_idx32 = __riscv_vget_v_i32m8_i32m4(max_idx_vec32, 1);
+
+                    // Create masks for valid indices (-1 means no valid element was found)
+                    vbool8_t lo_valid_mask = __riscv_vmsne_vx_i32m4_b8(lo_idx32, -1, half_vl_m4);
+                    vbool8_t hi_valid_mask = __riscv_vmsne_vx_i32m4_b8(hi_idx32, -1, current_vl_m8 - half_vl_m4);
+
+                    // Widen, add offset, and merge
+                    vint64m8_t widened_lo = __riscv_vsext_vf2_i64m8(lo_idx32, half_vl_m4);
+                    vint64m8_t lo_idx64_added = __riscv_vadd_vx_i64m8(widened_lo, channel_offset, half_vl_m4);
+                    vint64m8_t lo_idx64 = __riscv_vmerge_vvm_i64m8(__riscv_vmv_v_x_i64m8(-1, half_vl_m4), lo_idx64_added, lo_valid_mask, half_vl_m4);
+
+
+                    vint64m8_t widened_hi = __riscv_vsext_vf2_i64m8(hi_idx32, current_vl_m8 - half_vl_m4);
+                    vint64m8_t hi_idx64_added = __riscv_vadd_vx_i64m8(widened_hi, channel_offset, current_vl_m8 - half_vl_m4);
+                    vint64m8_t hi_idx64 = __riscv_vmerge_vvm_i64m8(__riscv_vmv_v_x_i64m8(-1, current_vl_m8 - half_vl_m4), hi_idx64_added, hi_valid_mask, current_vl_m8 - half_vl_m4);
+
+
+                    vl = __riscv_vsetvl_e32m8(current_tile_width); // Restore original vl for storage
+                    
+                    // Store the 64-bit indices
+                    __riscv_vse64_v_i64m8(i_channel + oh * OW + ow, lo_idx64, half_vl_m4);
+                    __riscv_vse64_v_i64m8(i_channel + oh * OW + ow + half_vl_m4, hi_idx64, vl - half_vl_m4);
+
+                    ow += vl;
+                }
+            }
+        }
+    }
+}
+
+/**
+ * @brief Tiled wrapper for the vectorized maxpool operation
+ */
+void maxpool_e32m8_tiled(const float* X, float* Y, int64_t* I, size_t N, size_t C, size_t H, size_t W, size_t K, size_t S, bool ceil_mode) {
+    size_t OH = CALC_OUT_DIM(H, K, S, ceil_mode);
+    size_t OW = CALC_OUT_DIM(W, K, S, ceil_mode);
+    for (size_t oh_base = 0; oh_base < OH; oh_base += TILE_H) {
+        for (size_t ow_base = 0; ow_base < OW; ow_base += TILE_W) {
+            size_t oh_end = std::min(oh_base + TILE_H, OH);
+            size_t ow_end = std::min(ow_base + TILE_W, OW);
+            maxpool_e32m8_tile(X, Y, I, N, C, H, W, K, S, ceil_mode, OH, OW, oh_base, ow_base, oh_end, ow_end);
+        }
+    }
+}
+
 
 // RVV optimized 2D convolution (e32m8)
 void conv2d_e32m8(
@@ -516,4 +643,3 @@ void conv2d_e32m8(
         }
     }
 }
-

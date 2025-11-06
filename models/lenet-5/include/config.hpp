@@ -6,15 +6,14 @@
  * Set to 1 to use vectorized (RVV) kernels where available.
  * Set to 0 to use scalar C++ kernels.
  */
-#define USE_VECTOR_KERNELS 1
+#define USE_VECTOR_KERNELS 0
 
 // --- Kernel Selection ---
 #if USE_VECTOR_KERNELS
     // --- Use Vector Implementations ---
     
-    // Note: Conv & Maxpool remain scalar as requested
     #define conv2d      conv2d_e32m8
-    #define maxpool     maxpool_scalar_tile
+    #define maxpool     maxpool_e32m8_tiled
     
     #define relu        relu_e32m8
     #define bias_add    bias_add_e32m8

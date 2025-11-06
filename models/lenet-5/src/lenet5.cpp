@@ -74,9 +74,17 @@ int LeNet5::predict(const std::vector<float>& image_data) {
     bias_add(c1_out_nobias.data(), c1_b.data(), c1_out.data(),
             BATCH_SIZE, C1_OUT_C, C1_OUT_H, C1_OUT_W);
     relu(c1_out.data(), relu1_out.data(), C1_OUT_SIZE);
-    maxpool(relu1_out.data(), pool1_out.data(), indices_pool1.data(),
-                       BATCH_SIZE, C1_OUT_C, C1_OUT_H, C1_OUT_W, POOL1_K, POOL1_S, 
-                       false, POOL1_OUT_H, POOL1_OUT_W, 0, 0, POOL1_OUT_H, POOL1_OUT_W);
+    
+    // CHANGED CALL
+	#if USE_VECTOR_KERNELS == 1
+		maxpool(relu1_out.data(), pool1_out.data(), indices_pool1.data(),
+						BATCH_SIZE, C1_OUT_C, C1_OUT_H, C1_OUT_W, POOL1_K, POOL1_S, 
+						false);
+    #else
+		maxpool(relu1_out.data(), pool1_out.data(), indices_pool1.data(),
+						BATCH_SIZE, C1_OUT_C, C1_OUT_H, C1_OUT_W, POOL1_K, POOL1_S, 
+						false, POOL1_OUT_H, POOL1_OUT_W, 0, 0, POOL1_OUT_H, POOL1_OUT_W);
+    #endif
 
     // --- PARALLEL BLOCK START ---
     // Branch 1: C2_1
@@ -85,9 +93,17 @@ int LeNet5::predict(const std::vector<float>& image_data) {
     bias_add(c2_1_out_nobias.data(), c2_1_b.data(), c2_1_out.data(),
             BATCH_SIZE, C2_OUT_C, C2_OUT_H, C2_OUT_W);
     relu(c2_1_out.data(), relu2_1_out.data(), C2_OUT_SIZE);
-    maxpool(relu2_1_out.data(), pool2_1_out.data(), indices_pool2_1.data(),
-                       BATCH_SIZE, C2_OUT_C, C2_OUT_H, C2_OUT_W, POOL2_K, POOL2_S, 
-                       false, POOL2_OUT_H, POOL2_OUT_W, 0, 0, POOL2_OUT_H, POOL2_OUT_W);
+
+    // CHANGED CALL
+	#if USE_VECTOR_KERNELS == 1
+		maxpool(relu2_1_out.data(), pool2_1_out.data(), indices_pool2_1.data(),
+						BATCH_SIZE, C2_OUT_C, C2_OUT_H, C2_OUT_W, POOL2_K, POOL2_S, 
+						false);
+    #else
+		maxpool(relu2_1_out.data(), pool2_1_out.data(), indices_pool2_1.data(),
+						BATCH_SIZE, C2_OUT_C, C2_OUT_H, C2_OUT_W, POOL2_K, POOL2_S, 
+						false, POOL2_OUT_H, POOL2_OUT_W, 0, 0, POOL2_OUT_H, POOL2_OUT_W);
+    #endif
 
     // Branch 2: C2_2
     conv2d(pool1_out.data(), c2_2_w.data(), c2_2_out_nobias.data(),
@@ -95,9 +111,17 @@ int LeNet5::predict(const std::vector<float>& image_data) {
     bias_add(c2_2_out_nobias.data(), c2_2_b.data(), c2_2_out.data(),
                 BATCH_SIZE, C2_OUT_C, C2_OUT_H, C2_OUT_W);
     relu(c2_2_out.data(), relu2_2_out.data(), C2_OUT_SIZE);
-    maxpool(relu2_2_out.data(), pool2_2_out.data(), indices_pool2_2.data(),
-                       BATCH_SIZE, C2_OUT_C, C2_OUT_H, C2_OUT_W, POOL2_K, POOL2_S, 
-                       false, POOL2_OUT_H, POOL2_OUT_W, 0, 0, POOL2_OUT_H, POOL2_OUT_W);
+
+    // CHANGED CALL
+	#if USE_VECTOR_KERNELS == 1
+		maxpool(relu2_2_out.data(), pool2_2_out.data(), indices_pool2_2.data(),
+						BATCH_SIZE, C2_OUT_C, C2_OUT_H, C2_OUT_W, POOL2_K, POOL2_S, 
+						false);
+    #else
+		maxpool(relu2_2_out.data(), pool2_2_out.data(), indices_pool2_2.data(),
+						BATCH_SIZE, C2_OUT_C, C2_OUT_H, C2_OUT_W, POOL2_K, POOL2_S, 
+						false, POOL2_OUT_H, POOL2_OUT_W, 0, 0, POOL2_OUT_H, POOL2_OUT_W);
+    #endif
     // --- PARALLEL BLOCK END ---
 
     // Add node

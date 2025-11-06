@@ -115,9 +115,22 @@ void softmax_vec(const float *i, float *o, uint64_t channels,
                  uint64_t innerSize);
 
 void conv2d_e32m8(
-	const float* input, const float* kernel, float* output,
-	int batch_size, int in_channels, int out_channels,
-	int input_h, int input_w, int kernel_h, int kernel_w,
-	int stride_h, int stride_w, int pad_h, int pad_w);
+    const float* input, const float* kernel, float* output,
+    int batch_size, int in_channels, int out_channels,
+    int input_h, int input_w, int kernel_h, int kernel_w,
+    int stride_h, int stride_w, int pad_h, int pad_w);
+
+// NEW MAXPOOL DECLARATIONS
+void maxpool_e32m8_tile(
+    const float* X, float* Y, int64_t* I,
+    size_t N, size_t C, size_t H, size_t W, size_t K, size_t S, bool ceil_mode,
+    size_t OH, size_t OW,
+    size_t tile_oh_start, size_t tile_ow_start,
+    size_t tile_oh_end, size_t tile_ow_end);
+
+void maxpool_e32m8_tiled(
+    const float* X, float* Y, int64_t* I,
+    size_t N, size_t C, size_t H, size_t W, size_t K, size_t S, bool ceil_mode);
+
 
 #endif // DEFS_HPP
