@@ -1,4 +1,4 @@
-CC = riscv64-unknown-linux-gnu-g++
+git CC = riscv64-unknown-linux-gnu-g++
 FLAGS = -march=rv64gcv -static
 
 # Include directories
