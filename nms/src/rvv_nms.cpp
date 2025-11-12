@@ -54,6 +54,157 @@ float compute_iou_rvv(const float* box1, const float* box2, int center_point_box
     return compute_iou_rvv_template<M1>(box1, box2, center_point_box);
 }
 
+// Module: Filter scores above threshold using vectorized operations
+template<int LMUL>
+void filter_scores_by_threshold(
+    const float* scores,
+    size_t batch, size_t cls, size_t spatial_dimension,
+    size_t num_classes,
+    float score_threshold,
+    vector<pair<float, size_t>>& score_index_pairs
+) {
+    for (size_t i = 0; i < spatial_dimension; i += SET_VECTOR_LENGTH_MAX<float, LMUL>()) {
+        size_t vl = SET_VECTOR_LENGTH<float, LMUL>(spatial_dimension - i);
+        size_t score_idx = batch * num_classes * spatial_dimension + cls * spatial_dimension + i;
+
+        auto vscores = VECTOR_LOAD<float, LMUL>(&scores[score_idx], vl);
+        auto vthreshold = VECTOR_MOVE<float, LMUL>(score_threshold, vl);
+        auto mask = VECTOR_GE<float, LMUL>(vscores, vthreshold, vl);
+
+        size_t count = VECTOR_COUNT_POP(mask, vl);
+        if (count > 0) {
+            auto all_indices = VECTOR_VID<uint32_t, LMUL>(vl);
+            auto selected_indices_vec = VECTOR_COMPRESS<uint32_t, LMUL>(all_indices, mask, vl);
+            uint32_t* indices_arr = new uint32_t[count];
+            VECTOR_STORE<uint32_t, LMUL>(indices_arr, selected_indices_vec, count);
+            for (size_t k = 0; k < count; k++) {
+                size_t j = indices_arr[k];
+                score_index_pairs.push_back({scores[score_idx + j], i + j});
+            }
+            delete[] indices_arr;
+        }
+    }
+}
+
+// Module: Sort score-index pairs by score in descending order
+void sort_by_score_descending(vector<pair<float, size_t>>& score_index_pairs) {
+    sort(score_index_pairs.begin(), score_index_pairs.end(),
+         [](const pair<float, size_t>& a, const pair<float, size_t>& b) {
+             return a.first > b.first;  // Descending order by score
+         });
+}
+
+// Helper: Fast overlap check (cheap pre-filter before full IoU)
+// Returns true if boxes might have IoU > threshold, false if definitely not
+inline bool can_boxes_overlap(const float* box1, const float* box2, float iou_threshold) {
+    // box format: [y1, x1, y2, x2] in corner format
+    // Quick rejection: if boxes don't overlap at all, IoU = 0
+    if (box1[2] < box2[0] || box2[2] < box1[0] ||  // no y overlap
+        box1[3] < box2[1] || box2[3] < box1[1]) {  // no x overlap
+        return false;
+    }
+    
+    // Compute max possible IoU upper bound using min area
+    float w1 = box1[3] - box1[1];
+    float h1 = box1[2] - box1[0];
+    float area1 = w1 * h1;
+    
+    float w2 = box2[3] - box2[1];
+    float h2 = box2[2] - box2[0];
+    float area2 = w2 * h2;
+    
+    // Maximum possible IoU is when smaller box is completely inside larger
+    float min_area = min(area1, area2);
+    float max_area = max(area1, area2);
+    
+    // If smaller_area / larger_area < threshold, IoU can't exceed threshold
+    if (min_area / max_area < iou_threshold) {
+        // Still need to check if actual overlap might exceed threshold
+        // This is a conservative check
+        float inter_w = min(box1[3], box2[3]) - max(box1[1], box2[1]);
+        float inter_h = min(box1[2], box2[2]) - max(box1[0], box2[0]);
+        float inter_area = inter_w * inter_h;
+        
+        // Early rejection if intersection is too small
+        if (inter_area / max_area < iou_threshold * 0.5f) {
+            return false;
+        }
+    }
+    
+    return true;  // Need full IoU computation
+}
+
+// Module: Apply greedy NMS suppression with fast overlap rejection
+template<int LMUL>
+void apply_greedy_suppression(
+    const float* boxes,
+    const vector<pair<float, size_t>>& score_index_pairs,
+    size_t batch, size_t cls, size_t spatial_dimension,
+    int64_t max_output_boxes_per_class,
+    float iou_threshold,
+    int center_point_box,
+    vector<SelectedIndex>& selected_indices
+) {
+    const size_t n = score_index_pairs.size();
+    if (n == 0) return;
+    
+    vector<bool> suppressed(n, false);
+    int64_t selected_count = 0;
+    
+    // Pre-convert all boxes to corner format to avoid repeated conversions
+    vector<float> box_corners(n * 4);
+    for (size_t i = 0; i < n; i++) {
+        size_t box_idx = score_index_pairs[i].second;
+        const float* box = &boxes[batch * spatial_dimension * 4 + box_idx * 4];
+        
+        if (center_point_box == CENTER_FORMAT) {
+            convert_box_format_rvv(box, &box_corners[i * 4], CENTER_FORMAT, CORNER_FORMAT);
+        } else {
+            memcpy(&box_corners[i * 4], box, 4 * sizeof(float));
+        }
+    }
+
+    for (size_t i = 0; i < n && selected_count < max_output_boxes_per_class; i++) {
+        if (suppressed[i]) continue;
+
+        size_t box_idx = score_index_pairs[i].second;
+        selected_indices.push_back({static_cast<int64_t>(batch), static_cast<int64_t>(cls), static_cast<int64_t>(box_idx)});
+        selected_count++;
+
+        if (selected_count >= max_output_boxes_per_class) break;
+
+        const float* current_box = &box_corners[i * 4];
+        
+        // Process remaining boxes in batches for better vectorization
+        size_t j = i + 1;
+        
+        // Vectorized batch processing: check multiple boxes at once
+        while (j < n) {
+            size_t batch_end = min(j + 8, n);  // Process 8 boxes at a time
+            
+            for (size_t k = j; k < batch_end; k++) {
+                if (suppressed[k]) continue;
+                
+                const float* other_box = &box_corners[k * 4];
+                
+                // Fast rejection filter (cheap geometric check)
+                if (!can_boxes_overlap(current_box, other_box, iou_threshold)) {
+                    continue;  // Skip expensive IoU computation
+                }
+                
+                // Full IoU computation only for candidates
+                float iou = compute_iou_rvv_template<LMUL>(current_box, other_box, CORNER_FORMAT);
+                
+                if (iou > iou_threshold) {
+                    suppressed[k] = true;
+                }
+            }
+            
+            j = batch_end;
+        }
+    }
+}
+
 // Template NMS implementation for all LMUL variants
 template<int LMUL>
 vector<SelectedIndex> nms_template(
@@ -70,59 +221,18 @@ vector<SelectedIndex> nms_template(
 
     for (size_t batch = 0; batch < num_batches; batch++) {
         for (size_t cls = 0; cls < num_classes; cls++) {
+            // Step 1: Filter scores above threshold
             vector<pair<float, size_t>> score_index_pairs;
+            filter_scores_by_threshold<LMUL>(scores, batch, cls, spatial_dimension, 
+                                             num_classes, score_threshold, score_index_pairs);
 
-			for (size_t i = 0; i < spatial_dimension; i += SET_VECTOR_LENGTH_MAX<float, LMUL>()) {
-				size_t vl = SET_VECTOR_LENGTH<float, LMUL>(spatial_dimension - i);
-                size_t score_idx = batch * num_classes * spatial_dimension + cls * spatial_dimension + i;
+            // Step 2: Sort by score (highest first)
+            sort_by_score_descending(score_index_pairs);
 
-                auto vscores = VECTOR_LOAD<float, LMUL>(&scores[score_idx], vl);
-                auto vthreshold = VECTOR_MOVE<float, LMUL>(score_threshold, vl);
-                auto mask = VECTOR_GE<float, LMUL>(vscores, vthreshold, vl);
-
-                size_t count = VECTOR_COUNT_POP(mask, vl);
-                if (count > 0) {
-                    auto all_indices = VECTOR_VID<uint32_t, LMUL>(vl);
-                    auto selected_indices_vec = VECTOR_COMPRESS<uint32_t, LMUL>(all_indices, mask, vl);
-                    uint32_t* indices_arr = new uint32_t[count];
-                    VECTOR_STORE<uint32_t, LMUL>(indices_arr, selected_indices_vec, count);
-                    for (size_t k = 0; k < count; k++) {
-                        size_t j = indices_arr[k];
-                        score_index_pairs.push_back({scores[score_idx + j], i + j});
-                    }
-                    delete[] indices_arr;
-                }
-            }
-
-            sort(score_index_pairs.begin(), score_index_pairs.end(),
-                      [](const pair<float, size_t>& a, const pair<float, size_t>& b) {
-                          return a.first > b.first;
-                      });
-
-            vector<bool> suppressed(score_index_pairs.size(), false);
-            int64_t selected_count = 0;
-
-            for (size_t i = 0; i < score_index_pairs.size() && selected_count < max_output_boxes_per_class; i++) {
-                if (suppressed[i]) continue;
-
-                size_t box_idx = score_index_pairs[i].second;
-                selected_indices.push_back({static_cast<int64_t>(batch), static_cast<int64_t>(cls), static_cast<int64_t>(box_idx)});
-                selected_count++;
-
-                const float* current_box = &boxes[batch * spatial_dimension * 4 + box_idx * 4];
-
-                for (size_t j = i + 1; j < score_index_pairs.size(); j++) {
-                    if (suppressed[j]) continue;
-
-                    size_t other_box_idx = score_index_pairs[j].second;
-                    const float* other_box = &boxes[batch * spatial_dimension * 4 + other_box_idx * 4];
-
-                    float iou = compute_iou_rvv_template<LMUL>(current_box, other_box, center_point_box);
-                    if (iou > iou_threshold) {
-                        suppressed[j] = true;
-                    }
-                }
-            }
+            // Step 3: Apply greedy NMS suppression
+            apply_greedy_suppression<LMUL>(boxes, score_index_pairs, batch, cls, spatial_dimension,
+                                          max_output_boxes_per_class, iou_threshold, 
+                                          center_point_box, selected_indices);
         }
     }
 
