@@ -86,12 +86,84 @@ void filter_scores_by_threshold(
     }
 }
 
-// Module: Sort score-index pairs by score in descending order
+// Module: Radix sort for float scores in descending order
+void radix_sort_by_score_descending(vector<pair<float, size_t>>& score_index_pairs) {
+    const size_t n = score_index_pairs.size();
+    if (n < 2) return;
+    
+    // For small arrays, use std::sort (overhead not worth it)
+    if (n < 64) {
+        sort(score_index_pairs.begin(), score_index_pairs.end(),
+             [](const pair<float, size_t>& a, const pair<float, size_t>& b) {
+                 return a.first > b.first;  // No tie-breaking
+             });
+        return;
+    }
+    
+    // Helper: Convert float to sortable unsigned integer
+    // Handles IEEE 754 representation so that bitwise comparison matches numerical order
+    auto float_to_sortable = [](float f) -> uint32_t {
+        uint32_t u;
+        memcpy(&u, &f, sizeof(float));
+        // Flip bits: if negative, flip all bits; if positive, flip sign bit only
+        uint32_t mask = -static_cast<int32_t>(u >> 31) | 0x80000000;
+        return u ^ mask;
+    };
+    
+    // Extract sortable keys
+    vector<uint32_t> keys(n);
+    for (size_t i = 0; i < n; i++) {
+        keys[i] = float_to_sortable(score_index_pairs[i].first);
+    }
+    
+    // Radix sort: process 8 bits at a time (4 passes for 32-bit floats)
+    const int BITS = 8;
+    const int BUCKETS = 1 << BITS;  // 256 buckets
+    vector<int> count(BUCKETS);
+    vector<pair<float, size_t>> temp(n);
+    
+    for (int shift = 0; shift < 32; shift += BITS) {
+        // Count occurrences of each byte value
+        fill(count.begin(), count.end(), 0);
+        for (size_t i = 0; i < n; i++) {
+            int bucket = (keys[i] >> shift) & (BUCKETS - 1);
+            count[bucket]++;
+        }
+        
+        // Compute cumulative counts (for descending order, start from high bucket)
+        // This places higher values first
+        int total = 0;
+        for (int i = BUCKETS - 1; i >= 0; i--) {
+            int old_count = count[i];
+            count[i] = total;
+            total += old_count;
+        }
+        
+        // Redistribute elements based on current byte
+        for (size_t i = 0; i < n; i++) {
+            int bucket = (keys[i] >> shift) & (BUCKETS - 1);
+            int pos = count[bucket]++;
+            temp[pos] = score_index_pairs[i];
+        }
+        
+        // Swap buffers for next iteration
+        swap(score_index_pairs, temp);
+        
+        // Update keys array to match swapped data
+        if (shift + BITS < 32) {  // Don't need to update on last iteration
+            for (size_t i = 0; i < n; i++) {
+                keys[i] = float_to_sortable(score_index_pairs[i].first);
+            }
+        }
+    }
+    
+    // Note: No tie-breaking by index - radix sort is stable but order depends on input
+}
+
+// Module: Sort score-index pairs by score in descending order (wrapper with optimization choice)
 void sort_by_score_descending(vector<pair<float, size_t>>& score_index_pairs) {
-    sort(score_index_pairs.begin(), score_index_pairs.end(),
-         [](const pair<float, size_t>& a, const pair<float, size_t>& b) {
-             return a.first > b.first;
-         });
+    // Use radix sort for better performance on larger datasets
+    radix_sort_by_score_descending(score_index_pairs);
 }
 
 // Module: Apply greedy NMS suppression
