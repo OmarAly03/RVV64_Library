@@ -86,87 +86,55 @@ void filter_scores_by_threshold(
     }
 }
 
-// Module: Radix sort for float scores in descending order
-void radix_sort_by_score_descending(vector<pair<float, size_t>>& score_index_pairs) {
-    const size_t n = score_index_pairs.size();
-    if (n < 2) return;
-    
-    // For small arrays, use std::sort (overhead not worth it)
-    if (n < 64) {
-        sort(score_index_pairs.begin(), score_index_pairs.end(),
-             [](const pair<float, size_t>& a, const pair<float, size_t>& b) {
-                 return a.first > b.first;  // No tie-breaking
-             });
-        return;
-    }
-    
-    // Helper: Convert float to sortable unsigned integer
-    // Handles IEEE 754 representation so that bitwise comparison matches numerical order
-    auto float_to_sortable = [](float f) -> uint32_t {
-        uint32_t u;
-        memcpy(&u, &f, sizeof(float));
-        // Flip bits: if negative, flip all bits; if positive, flip sign bit only
-        uint32_t mask = -static_cast<int32_t>(u >> 31) | 0x80000000;
-        return u ^ mask;
-    };
-    
-    // Extract sortable keys
-    vector<uint32_t> keys(n);
-    for (size_t i = 0; i < n; i++) {
-        keys[i] = float_to_sortable(score_index_pairs[i].first);
-    }
-    
-    // Radix sort: process 8 bits at a time (4 passes for 32-bit floats)
-    const int BITS = 8;
-    const int BUCKETS = 1 << BITS;  // 256 buckets
-    vector<int> count(BUCKETS);
-    vector<pair<float, size_t>> temp(n);
-    
-    for (int shift = 0; shift < 32; shift += BITS) {
-        // Count occurrences of each byte value
-        fill(count.begin(), count.end(), 0);
-        for (size_t i = 0; i < n; i++) {
-            int bucket = (keys[i] >> shift) & (BUCKETS - 1);
-            count[bucket]++;
-        }
-        
-        // Compute cumulative counts (for descending order, start from high bucket)
-        // This places higher values first
-        int total = 0;
-        for (int i = BUCKETS - 1; i >= 0; i--) {
-            int old_count = count[i];
-            count[i] = total;
-            total += old_count;
-        }
-        
-        // Redistribute elements based on current byte
-        for (size_t i = 0; i < n; i++) {
-            int bucket = (keys[i] >> shift) & (BUCKETS - 1);
-            int pos = count[bucket]++;
-            temp[pos] = score_index_pairs[i];
-        }
-        
-        // Swap buffers for next iteration
-        swap(score_index_pairs, temp);
-        
-        // Update keys array to match swapped data
-        if (shift + BITS < 32) {  // Don't need to update on last iteration
-            for (size_t i = 0; i < n; i++) {
-                keys[i] = float_to_sortable(score_index_pairs[i].first);
-            }
-        }
-    }
-    
-    // Note: No tie-breaking by index - radix sort is stable but order depends on input
-}
-
-// Module: Sort score-index pairs by score in descending order (wrapper with optimization choice)
+// Module: Sort score-index pairs by score in descending order
 void sort_by_score_descending(vector<pair<float, size_t>>& score_index_pairs) {
-    // Use radix sort for better performance on larger datasets
-    radix_sort_by_score_descending(score_index_pairs);
+    sort(score_index_pairs.begin(), score_index_pairs.end(),
+         [](const pair<float, size_t>& a, const pair<float, size_t>& b) {
+             return a.first > b.first;  // Descending order by score
+         });
 }
 
-// Module: Apply greedy NMS suppression
+// Helper: Fast overlap check (cheap pre-filter before full IoU)
+// Returns true if boxes might have IoU > threshold, false if definitely not
+inline bool can_boxes_overlap(const float* box1, const float* box2, float iou_threshold) {
+    // box format: [y1, x1, y2, x2] in corner format
+    // Quick rejection: if boxes don't overlap at all, IoU = 0
+    if (box1[2] < box2[0] || box2[2] < box1[0] ||  // no y overlap
+        box1[3] < box2[1] || box2[3] < box1[1]) {  // no x overlap
+        return false;
+    }
+    
+    // Compute max possible IoU upper bound using min area
+    float w1 = box1[3] - box1[1];
+    float h1 = box1[2] - box1[0];
+    float area1 = w1 * h1;
+    
+    float w2 = box2[3] - box2[1];
+    float h2 = box2[2] - box2[0];
+    float area2 = w2 * h2;
+    
+    // Maximum possible IoU is when smaller box is completely inside larger
+    float min_area = min(area1, area2);
+    float max_area = max(area1, area2);
+    
+    // If smaller_area / larger_area < threshold, IoU can't exceed threshold
+    if (min_area / max_area < iou_threshold) {
+        // Still need to check if actual overlap might exceed threshold
+        // This is a conservative check
+        float inter_w = min(box1[3], box2[3]) - max(box1[1], box2[1]);
+        float inter_h = min(box1[2], box2[2]) - max(box1[0], box2[0]);
+        float inter_area = inter_w * inter_h;
+        
+        // Early rejection if intersection is too small
+        if (inter_area / max_area < iou_threshold * 0.5f) {
+            return false;
+        }
+    }
+    
+    return true;  // Need full IoU computation
+}
+
+// Module: Apply greedy NMS suppression with fast overlap rejection
 template<int LMUL>
 void apply_greedy_suppression(
     const float* boxes,
@@ -177,28 +145,62 @@ void apply_greedy_suppression(
     int center_point_box,
     vector<SelectedIndex>& selected_indices
 ) {
-    vector<bool> suppressed(score_index_pairs.size(), false);
+    const size_t n = score_index_pairs.size();
+    if (n == 0) return;
+    
+    vector<bool> suppressed(n, false);
     int64_t selected_count = 0;
+    
+    // Pre-convert all boxes to corner format to avoid repeated conversions
+    vector<float> box_corners(n * 4);
+    for (size_t i = 0; i < n; i++) {
+        size_t box_idx = score_index_pairs[i].second;
+        const float* box = &boxes[batch * spatial_dimension * 4 + box_idx * 4];
+        
+        if (center_point_box == CENTER_FORMAT) {
+            convert_box_format_rvv(box, &box_corners[i * 4], CENTER_FORMAT, CORNER_FORMAT);
+        } else {
+            memcpy(&box_corners[i * 4], box, 4 * sizeof(float));
+        }
+    }
 
-    for (size_t i = 0; i < score_index_pairs.size() && selected_count < max_output_boxes_per_class; i++) {
+    for (size_t i = 0; i < n && selected_count < max_output_boxes_per_class; i++) {
         if (suppressed[i]) continue;
 
         size_t box_idx = score_index_pairs[i].second;
         selected_indices.push_back({static_cast<int64_t>(batch), static_cast<int64_t>(cls), static_cast<int64_t>(box_idx)});
         selected_count++;
 
-        const float* current_box = &boxes[batch * spatial_dimension * 4 + box_idx * 4];
+        if (selected_count >= max_output_boxes_per_class) break;
 
-        for (size_t j = i + 1; j < score_index_pairs.size(); j++) {
-            if (suppressed[j]) continue;
-
-            size_t other_box_idx = score_index_pairs[j].second;
-            const float* other_box = &boxes[batch * spatial_dimension * 4 + other_box_idx * 4];
-
-            float iou = compute_iou_rvv_template<LMUL>(current_box, other_box, center_point_box);
-            if (iou > iou_threshold) {
-                suppressed[j] = true;
+        const float* current_box = &box_corners[i * 4];
+        
+        // Process remaining boxes in batches for better vectorization
+        size_t j = i + 1;
+        
+        // Vectorized batch processing: check multiple boxes at once
+        while (j < n) {
+            size_t batch_end = min(j + 8, n);  // Process 8 boxes at a time
+            
+            for (size_t k = j; k < batch_end; k++) {
+                if (suppressed[k]) continue;
+                
+                const float* other_box = &box_corners[k * 4];
+                
+                // Fast rejection filter (cheap geometric check)
+                if (!can_boxes_overlap(current_box, other_box, iou_threshold)) {
+                    continue;  // Skip expensive IoU computation
+                }
+                
+                // Full IoU computation only for candidates
+                float iou = compute_iou_rvv_template<LMUL>(current_box, other_box, CORNER_FORMAT);
+                
+                if (iou > iou_threshold) {
+                    suppressed[k] = true;
+                }
             }
+            
+            j = batch_end;
         }
     }
 }
