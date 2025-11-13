@@ -12,7 +12,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # =============== Import Utility Functions ===============
 from src.onnx_utils import max_abs_error, snr_db
-from src.nms_utils import load_binary_data, nms_reference_numpy
+from src.nms_utils import load_binary_data
 
 # ==== Loading ONNX Model ====
 onnx_model = onnx.load(os.path.join(SCRIPT_DIR, "./output_files/nms.onnx"))
@@ -73,9 +73,6 @@ def main():
     input_names = [input.name for input in onnx_model.graph.input]
     onnx_ref = session.run(None, {input_names[0]: boxes, input_names[1]: scores})[0]
 
-    # ==== Python Scalar ====
-    py_scalar = nms_reference_numpy(boxes, scores, max_output_boxes_per_class, iou_threshold, score_threshold)
-
     # ==== C Implementations ====
     c_scalar = load_nms_results("./output_files/nms_scalar.bin")
     c_e32m1 = load_nms_results("./output_files/nms_e32m1.bin")
@@ -86,7 +83,6 @@ def main():
     # ==== Results Table ====
     implementations = [
         ("ONNX Golden Ref", onnx_ref),
-        ("Python Scalar", py_scalar),
         ("C Scalar", c_scalar),
         ("C Vectorized (e32m1)", c_e32m1),
         ("C Vectorized (e32m2)", c_e32m2),

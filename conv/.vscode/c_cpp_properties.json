@@ -1,0 +1,22 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/opt/riscv/lib/gcc/riscv64-unknown-linux-gnu/15.1.0/include",
+                "${workspaceFolder}/conv/include",
+                "${workspaceFolder}/conv_transpose/include",
+                "${workspaceFolder}/matmul/include",
+                "${workspaceFolder}/relu/include",
+                "${workspaceFolder}/nms/include"
+            ],
+            "defines": [],
+            "compilerPath": "/opt/riscv/bin/riscv64-unknown-linux-gnu-gcc",
+            "cStandard": "c17",
+            "cppStandard": "gnu++17",
+            "intelliSenseMode": "linux-gcc-x64"
+        }
+    ],
+    "version": 4
+}

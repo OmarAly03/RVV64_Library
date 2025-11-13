@@ -1,0 +1,14 @@
+{
+    "C_Cpp.default.includePath": [
+        "${workspaceFolder}/**",
+        "/opt/riscv/lib/gcc/riscv64-unknown-linux-gnu/15.1.0/include",
+        "${workspaceFolder}/conv/include",
+        "${workspaceFolder}/conv_transpose/include",
+        "${workspaceFolder}/matmul/include",
+        "${workspaceFolder}/relu/include",
+        "${workspaceFolder}/nms/include"
+    ],
+    "C_Cpp.default.compilerPath": "/opt/riscv/bin/riscv64-unknown-linux-gnu-gcc",
+    "C_Cpp.default.cppStandard": "gnu++17",
+    "C_Cpp.default.intelliSenseMode": "linux-gcc-x64"
+}
