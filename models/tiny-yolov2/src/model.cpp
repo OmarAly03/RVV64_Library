@@ -10,14 +10,16 @@ static inline float sigmoid(float x) {
     return 1.0f / (1.0f + std::exp(-x));
 }
 
-static inline void softmax(std::vector<float>& x) {
-    float max_val = *std::max_element(x.begin(), x.end());
+// MODIFIED: Operates on a raw pointer and size
+static inline void softmax(float* x, size_t size) {
+    if (size == 0) return;
+    float max_val = *std::max_element(x, x + size);
     float sum = 0.0f;
-    for (size_t i = 0; i < x.size(); ++i) {
+    for (size_t i = 0; i < size; ++i) {
         x[i] = std::exp(x[i] - max_val);
         sum += x[i];
     }
-    for (size_t i = 0; i < x.size(); ++i) {
+    for (size_t i = 0; i < size; ++i) {
         x[i] /= sum;
     }
 }
@@ -43,6 +45,7 @@ static float iou(const BoundingBox& box1, const BoundingBox& box2) {
     return inter_area / union_area;
 }
 
+// MODIFIED: Uses C-style array for class_scores
 static std::vector<BoundingBox> decode_output(const float* net_output, const std::vector<std::vector<float>>& anchors) {
     std::vector<BoundingBox> boxes;
     for (int y = 0; y < GRID_H; ++y) {
@@ -66,15 +69,18 @@ static std::vector<BoundingBox> decode_output(const float* net_output, const std
                 float width = anchors[a][0] * std::exp(net_output[tw_idx]);
                 float height = anchors[a][1] * std::exp(net_output[th_idx]);
 
-                std::vector<float> class_scores;
+                // Use a stack-allocated C-style array
+                float class_scores[NUM_CLASSES];
                 int class_start_idx = anchor_offset + (5 * GRID_H * GRID_W) + cell_offset;
                 for (int c = 0; c < NUM_CLASSES; ++c) {
                     int class_idx = class_start_idx + (c * GRID_H * GRID_W);
-                    class_scores.push_back(net_output[class_idx]);
+                    class_scores[c] = net_output[class_idx];
                 }
                 
-                softmax(class_scores);
-                int class_id = std::distance(class_scores.begin(), std::max_element(class_scores.begin(), class_scores.end()));
+                softmax(class_scores, NUM_CLASSES);
+                
+                // Find max element in C-style array
+                int class_id = std::max_element(class_scores, class_scores + NUM_CLASSES) - class_scores;
                 float class_score = class_scores[class_id];
                 
                 float final_score = objectness * class_score;
@@ -110,7 +116,7 @@ static std::vector<BoundingBox> non_max_suppression(std::vector<BoundingBox>& bo
 }
 
 
-// --- 2. Main Inference Function ---
+// --- 2. Main Inference Function (HEAVILY MODIFIED) ---
 
 std::vector<BoundingBox> yolo_model_inference(
     const ModelWeights& w,
@@ -118,117 +124,140 @@ std::vector<BoundingBox> yolo_model_inference(
 {
     // --- 1. Setup Buffers ---
     // We use two "ping-pong" buffers for activations
-    std::vector<float> buf_a, buf_b;
+    // MODIFIED: Allocate buffers ONCE and re-use them.
+    // This is the single most important change for embedded performance.
+    
+    // Max size for buf_a (ping) is 692,224 (from Layer 1: 16*208*208)
+    // We get this by finding the max size of all `buf_a.resize` calls
+    const size_t buf_a_max_size = 692224; 
+    // Max size for buf_b (pong) is 2,777,088 (from Layer 0: 16*416*416)
+    const size_t buf_b_max_size = 2777088; 
+
+    // Use 'static' to allocate in static data segment, not stack/heap per call
+    static std::vector<float> buf_a(buf_a_max_size);
+    static std::vector<float> buf_b(buf_b_max_size);
+
     const float* in_ptr;
     float* out_ptr;
 
     // --- 2. Preprocessing ---
-    buf_a = input_image; // Copy input image to buf_a
-    preprocess_image(buf_a.data(), w.pp_scale, w.pp_bias, 3, 416, 416);
+    // MODIFIED: Copy input image data into our static buffer
+    if(input_image.size() > buf_a.size()) {
+        std::cerr << "Error: Input image size is larger than buffer." << std::endl;
+        return {};
+    }
+    std::copy(input_image.begin(), input_image.end(), buf_a.begin());
+    
+    preprocess_image(buf_a.data(), w.pp_scale.data(), w.pp_bias.data(), 3, 416, 416);
     in_ptr = buf_a.data(); // Input for next layer
     
     // --- 3. Model Body ---
+    // ALL .resize() calls are removed.
+    // ALL kernel calls now use .data() for weights.
+    // ALL leaky_relu calls use explicit sizes.
 
     // Layer 0: Conv(16) -> BN -> Leaky
-    buf_b.resize(16 * 416 * 416); out_ptr = buf_b.data();
-    conv2d(in_ptr, out_ptr, w.conv0_w, 3, 416, 416, 16, 416, 416, 3, 1, 1, 1);
-    batch_normalization(out_ptr, w.bn0_s, w.bn0_b, w.bn0_m, w.bn0_v, 16, 416, 416);
-    leaky_relu(out_ptr, buf_b.size(), 0.1f);
+    out_ptr = buf_b.data();
+    conv2d(in_ptr, out_ptr, w.conv0_w.data(), 3, 416, 416, 16, 416, 416, 3, 1, 1, 1);
+    batch_normalization(out_ptr, w.bn0_s.data(), w.bn0_b.data(), w.bn0_m.data(), w.bn0_v.data(), 16, 416, 416);
+    leaky_relu(out_ptr, 16 * 416 * 416, 0.1f);
     in_ptr = buf_b.data();
 
     // Layer 1: MaxPool(k=2, s=2)
-    buf_a.resize(16 * 208 * 208); out_ptr = buf_a.data();
+    out_ptr = buf_a.data();
     max_pool_2d(in_ptr, out_ptr, 16, 416, 416, 208, 208, 2, 2, 0, 0);
     in_ptr = buf_a.data();
 
     // Layer 2: Conv(32) -> BN -> Leaky
-    buf_b.resize(32 * 208 * 208); out_ptr = buf_b.data();
-    conv2d(in_ptr, out_ptr, w.conv1_w, 16, 208, 208, 32, 208, 208, 3, 1, 1, 1);
-    batch_normalization(out_ptr, w.bn1_s, w.bn1_b, w.bn1_m, w.bn1_v, 32, 208, 208);
-    leaky_relu(out_ptr, buf_b.size(), 0.1f);
+    out_ptr = buf_b.data();
+    conv2d(in_ptr, out_ptr, w.conv1_w.data(), 16, 208, 208, 32, 208, 208, 3, 1, 1, 1);
+    batch_normalization(out_ptr, w.bn1_s.data(), w.bn1_b.data(), w.bn1_m.data(), w.bn1_v.data(), 32, 208, 208);
+    leaky_relu(out_ptr, 32 * 208 * 208, 0.1f);
     in_ptr = buf_b.data();
 
     // Layer 3: MaxPool(k=2, s=2)
-    buf_a.resize(32 * 104 * 104); out_ptr = buf_a.data();
+    out_ptr = buf_a.data();
     max_pool_2d(in_ptr, out_ptr, 32, 208, 208, 104, 104, 2, 2, 0, 0);
     in_ptr = buf_a.data();
 
     // Layer 4: Conv(64) -> BN -> Leaky
-    buf_b.resize(64 * 104 * 104); out_ptr = buf_b.data();
-    conv2d(in_ptr, out_ptr, w.conv2_w, 32, 104, 104, 64, 104, 104, 3, 1, 1, 1);
-    batch_normalization(out_ptr, w.bn2_s, w.bn2_b, w.bn2_m, w.bn2_v, 64, 104, 104);
-    leaky_relu(out_ptr, buf_b.size(), 0.1f);
+    out_ptr = buf_b.data();
+    conv2d(in_ptr, out_ptr, w.conv2_w.data(), 32, 104, 104, 64, 104, 104, 3, 1, 1, 1);
+    batch_normalization(out_ptr, w.bn2_s.data(), w.bn2_b.data(), w.bn2_m.data(), w.bn2_v.data(), 64, 104, 104);
+    leaky_relu(out_ptr, 64 * 104 * 104, 0.1f);
     in_ptr = buf_b.data();
 
     // Layer 5: MaxPool(k=2, s=2)
-    buf_a.resize(64 * 52 * 52); out_ptr = buf_a.data();
+    out_ptr = buf_a.data();
     max_pool_2d(in_ptr, out_ptr, 64, 104, 104, 52, 52, 2, 2, 0, 0);
     in_ptr = buf_a.data();
 
     // Layer 6: Conv(128) -> BN -> Leaky
-    buf_b.resize(128 * 52 * 52); out_ptr = buf_b.data();
-    conv2d(in_ptr, out_ptr, w.conv3_w, 64, 52, 52, 128, 52, 52, 3, 1, 1, 1);
-    batch_normalization(out_ptr, w.bn3_s, w.bn3_b, w.bn3_m, w.bn3_v, 128, 52, 52);
-    leaky_relu(out_ptr, buf_b.size(), 0.1f);
+    out_ptr = buf_b.data();
+    conv2d(in_ptr, out_ptr, w.conv3_w.data(), 64, 52, 52, 128, 52, 52, 3, 1, 1, 1);
+    batch_normalization(out_ptr, w.bn3_s.data(), w.bn3_b.data(), w.bn3_m.data(), w.bn3_v.data(), 128, 52, 52);
+    leaky_relu(out_ptr, 128 * 52 * 52, 0.1f);
     in_ptr = buf_b.data();
 
     // Layer 7: MaxPool(k=2, s=2)
-    buf_a.resize(128 * 26 * 26); out_ptr = buf_a.data();
+    out_ptr = buf_a.data();
     max_pool_2d(in_ptr, out_ptr, 128, 52, 52, 26, 26, 2, 2, 0, 0);
     in_ptr = buf_a.data();
 
     // Layer 8: Conv(256) -> BN -> Leaky
-    buf_b.resize(256 * 26 * 26); out_ptr = buf_b.data();
-    conv2d(in_ptr, out_ptr, w.conv4_w, 128, 26, 26, 256, 26, 26, 3, 1, 1, 1);
-    batch_normalization(out_ptr, w.bn4_s, w.bn4_b, w.bn4_m, w.bn4_v, 256, 26, 26);
-    leaky_relu(out_ptr, buf_b.size(), 0.1f);
+    out_ptr = buf_b.data();
+    conv2d(in_ptr, out_ptr, w.conv4_w.data(), 128, 26, 26, 256, 26, 26, 3, 1, 1, 1);
+    batch_normalization(out_ptr, w.bn4_s.data(), w.bn4_b.data(), w.bn4_m.data(), w.bn4_v.data(), 256, 26, 26);
+    leaky_relu(out_ptr, 256 * 26 * 26, 0.1f);
     in_ptr = buf_b.data();
 
     // Layer 9: MaxPool(k=2, s=2)
-    buf_a.resize(256 * 13 * 13); out_ptr = buf_a.data();
+    out_ptr = buf_a.data();
     max_pool_2d(in_ptr, out_ptr, 256, 26, 26, 13, 13, 2, 2, 0, 0);
     in_ptr = buf_a.data();
 
     // Layer 10: Conv(512) -> BN -> Leaky
-    buf_b.resize(512 * 13 * 13); out_ptr = buf_b.data();
-    conv2d(in_ptr, out_ptr, w.conv5_w, 256, 13, 13, 512, 13, 13, 3, 1, 1, 1);
-    batch_normalization(out_ptr, w.bn5_s, w.bn5_b, w.bn5_m, w.bn5_v, 512, 13, 13);
-    leaky_relu(out_ptr, buf_b.size(), 0.1f);
+    out_ptr = buf_b.data();
+    conv2d(in_ptr, out_ptr, w.conv5_w.data(), 256, 13, 13, 512, 13, 13, 3, 1, 1, 1);
+    batch_normalization(out_ptr, w.bn5_s.data(), w.bn5_b.data(), w.bn5_m.data(), w.bn5_v.data(), 512, 13, 13);
+    leaky_relu(out_ptr, 512 * 13 * 13, 0.1f);
     in_ptr = buf_b.data();
 
     // Layer 11: MaxPool(k=2, s=1, p=1) -- NOTE THE PADDING
-    buf_a.resize(512 * 13 * 13); out_ptr = buf_a.data();
+    out_ptr = buf_a.data();
     max_pool_2d(in_ptr, out_ptr, 512, 13, 13, 13, 13, 2, 1, 0, 0);
     in_ptr = buf_a.data();
 
     // Layer 12: Conv(1024) -> BN -> Leaky
-    buf_b.resize(1024 * 13 * 13); out_ptr = buf_b.data();
-    conv2d(in_ptr, out_ptr, w.conv6_w, 512, 13, 13, 1024, 13, 13, 3, 1, 1, 1);
-    batch_normalization(out_ptr, w.bn6_s, w.bn6_b, w.bn6_m, w.bn6_v, 1024, 13, 13);
-    leaky_relu(out_ptr, buf_b.size(), 0.1f);
+    out_ptr = buf_b.data();
+    conv2d(in_ptr, out_ptr, w.conv6_w.data(), 512, 13, 13, 1024, 13, 13, 3, 1, 1, 1);
+    batch_normalization(out_ptr, w.bn6_s.data(), w.bn6_b.data(), w.bn6_m.data(), w.bn6_v.data(), 1024, 13, 13);
+    leaky_relu(out_ptr, 1024 * 13 * 13, 0.1f);
     in_ptr = buf_b.data();
 
     // Layer 13: Conv(1024) -> BN -> Leaky
-    buf_a.resize(1024 * 13 * 13); out_ptr = buf_a.data();
-    conv2d(in_ptr, out_ptr, w.conv7_w, 1024, 13, 13, 1024, 13, 13, 3, 1, 1, 1);
-    batch_normalization(out_ptr, w.bn7_s, w.bn7_b, w.bn7_m, w.bn7_v, 1024, 13, 13);
-    leaky_relu(out_ptr, buf_a.size(), 0.1f);
+    out_ptr = buf_a.data();
+    conv2d(in_ptr, out_ptr, w.conv7_w.data(), 1024, 13, 13, 1024, 13, 13, 3, 1, 1, 1);
+    batch_normalization(out_ptr, w.bn7_s.data(), w.bn7_b.data(), w.bn7_m.data(), w.bn7_v.data(), 1024, 13, 13);
+    leaky_relu(out_ptr, 1024 * 13 * 13, 0.1f); // Fixed size
     in_ptr = buf_a.data();
 
     // Layer 14: Final Conv(125) + Bias
-    buf_b.resize(125 * 13 * 13); out_ptr = buf_b.data();
-    conv2d(in_ptr, out_ptr, w.conv8_w, 1024, 13, 13, 125, 13, 13, 1, 1, 0, 0);
-    add_bias(out_ptr, w.conv8_b, 125, 13, 13);
+    out_ptr = buf_b.data();
+    conv2d(in_ptr, out_ptr, w.conv8_w.data(), 1024, 13, 13, 125, 13, 13, 1, 1, 0, 0);
+    add_bias(out_ptr, w.conv8_b.data(), 125, 13, 13);
     
     // out_ptr (pointing to buf_b) now holds the final (125, 13, 13) grid
 
     // --- 4. Post-processing ---
+    // NOTE: These functions STILL use std::vector.
     std::vector<BoundingBox> boxes = decode_output(out_ptr, ANCHORS);
     return non_max_suppression(boxes);
 }
 
 
 // --- 3. Weight Loading Function ---
+// (No changes needed for this part, as loading happens once)
 
 void load_all_weights(ModelWeights& w, const std::string& weight_dir) {
     std::cout << "Loading weights from " << weight_dir << "..." << std::endl;
@@ -242,6 +271,8 @@ void load_all_weights(ModelWeights& w, const std::string& weight_dir) {
     w.bn0_b = load_weights_from_bin(weight_dir + "BatchNormalization_B.bin", 16);
     w.bn0_m = load_weights_from_bin(weight_dir + "BatchNormalization_mean.bin", 16);
     w.bn0_v = load_weights_from_bin(weight_dir + "BatchNormalization_variance.bin", 16);
+
+    // ... (rest of the loading function is identical) ...
 
     // Layer 1
     w.conv1_w = load_weights_from_bin(weight_dir + "convolution1_W.bin", 32*16*3*3);

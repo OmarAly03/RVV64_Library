@@ -4,8 +4,8 @@
 
 // (x * scale) + bias
 void preprocess_image(
-    float* data, const std::vector<float>& scale,
-    const std::vector<float>& bias,
+    float* data, const float* scale,
+    const float* bias,
     int channels, int height, int width)
 {
     const size_t spatial_dim = height * width;
@@ -23,7 +23,7 @@ void preprocess_image(
 // For real performance, you would use im2col + GEMM (e.g., with Eigen/BLAS)
 void conv2d(
     const float* input, float* output,
-    const std::vector<float>& weights,
+    const float* weights,
     int in_channels, int in_height, int in_width,
     int out_channels, int out_height, int out_width,
     int kernel_size, int stride, int pad_top, int pad_left)
@@ -40,8 +40,8 @@ void conv2d(
             for (int h_out = 0; h_out < out_height; ++h_out) {
                 for (int w_out = 0; w_out < out_width; ++w_out) {
                     
-					const int h_in_start = h_out * stride - pad_top;
-					const int w_in_start = w_out * stride - pad_left;
+                    const int h_in_start = h_out * stride - pad_top;
+                    const int w_in_start = w_out * stride - pad_left;
                     
                     float sum = 0.0f;
                     
@@ -66,9 +66,9 @@ void conv2d(
 }
 
 void batch_normalization(
-    float* data, const std::vector<float>& scale,
-    const std::vector<float>& bias, const std::vector<float>& mean,
-    const std::vector<float>& variance,
+    float* data, const float* scale,
+    const float* bias, const float* mean,
+    const float* variance,
     int channels, int height, int width, float epsilon)
 {
     const int spatial_dim = height * width;
@@ -108,8 +108,8 @@ void max_pool_2d(
         for (int h_out = 0; h_out < out_height; ++h_out) {
             for (int w_out = 0; w_out < out_width; ++w_out) {
                 
-				const int h_in_start = h_out * stride - pad_top;
-				const int w_in_start = w_out * stride - pad_left;
+                const int h_in_start = h_out * stride - pad_top;
+                const int w_in_start = w_out * stride - pad_left;
                 
                 float max_val = -FLT_MAX;
                 
@@ -132,7 +132,7 @@ void max_pool_2d(
 }
 
 void add_bias(
-    float* data, const std::vector<float>& biases,
+    float* data, const float* biases,
     int channels, int height, int width)
 {
     const size_t spatial_dim = height * width;
