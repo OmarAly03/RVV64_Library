@@ -1,8 +1,0 @@
-.vscode/
-**/__pycache__/
-**/output_files/*
-!**/output_files/.gitkeep
-
-# Ignore Python virtual environments
-.venv/
-
