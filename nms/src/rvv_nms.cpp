@@ -94,44 +94,13 @@ void sort_by_score_descending(vector<pair<float, size_t>>& score_index_pairs) {
          });
 }
 
-// Helper: Fast overlap check (cheap pre-filter before full IoU)
-// Returns true if boxes might have IoU > threshold, false if definitely not
-inline bool can_boxes_overlap(const float* box1, const float* box2, float iou_threshold) {
+// Helper: Fast overlap check using separating axis test
+// Returns true if boxes overlap at all, false if completely separated
+inline bool can_boxes_overlap(const float* box1, const float* box2) {
     // box format: [y1, x1, y2, x2] in corner format
     // Quick rejection: if boxes don't overlap at all, IoU = 0
-    if (box1[2] < box2[0] || box2[2] < box1[0] ||  // no y overlap
-        box1[3] < box2[1] || box2[3] < box1[1]) {  // no x overlap
-        return false;
-    }
-    
-    // Compute max possible IoU upper bound using min area
-    float w1 = box1[3] - box1[1];
-    float h1 = box1[2] - box1[0];
-    float area1 = w1 * h1;
-    
-    float w2 = box2[3] - box2[1];
-    float h2 = box2[2] - box2[0];
-    float area2 = w2 * h2;
-    
-    // Maximum possible IoU is when smaller box is completely inside larger
-    float min_area = min(area1, area2);
-    float max_area = max(area1, area2);
-    
-    // If smaller_area / larger_area < threshold, IoU can't exceed threshold
-    if (min_area / max_area < iou_threshold) {
-        // Still need to check if actual overlap might exceed threshold
-        // This is a conservative check
-        float inter_w = min(box1[3], box2[3]) - max(box1[1], box2[1]);
-        float inter_h = min(box1[2], box2[2]) - max(box1[0], box2[0]);
-        float inter_area = inter_w * inter_h;
-        
-        // Early rejection if intersection is too small
-        if (inter_area / max_area < iou_threshold * 0.5f) {
-            return false;
-        }
-    }
-    
-    return true;  // Need full IoU computation
+    return !(box1[2] < box2[0] || box2[2] < box1[0] ||  // no y overlap
+             box1[3] < box2[1] || box2[3] < box1[1]);   // no x overlap
 }
 
 // Module: Apply greedy NMS suppression with fast overlap rejection
@@ -187,8 +156,8 @@ void apply_greedy_suppression(
                 
                 const float* other_box = &box_corners[k * 4];
                 
-                // Fast rejection filter (cheap geometric check)
-                if (!can_boxes_overlap(current_box, other_box, iou_threshold)) {
+                // Fast rejection filter (separating axis test)
+                if (!can_boxes_overlap(current_box, other_box)) {
                     continue;  // Skip expensive IoU computation
                 }
                 
