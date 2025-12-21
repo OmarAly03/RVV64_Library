@@ -1,4 +1,5 @@
 #include "../include/defs.h"
+#include "rvv_defs.hpp"
 #include <cstring>
 #include <riscv_vector.h>
 
@@ -60,26 +61,28 @@ void scatter_elements_e32m1(
         for (size_t i = 0; i < indices_rows; i++) {
             size_t j = 0;
             while (j < indices_cols) {
-                size_t vl = __riscv_vsetvl_e32m1(indices_cols - j);
+                size_t vl = SET_VECTOR_LENGTH<float, M1>(indices_cols - j);
                 
-                // Load indices and updates
-                vint64m2_t v_indices_64 = __riscv_vle64_v_i64m2(&indices[i * indices_cols + j], vl);
-                vfloat32m1_t v_updates = __riscv_vle32_v_f32m1(&updates[i * indices_cols + j], vl);
+                // Load indices and updates using wrappers
+                auto v_indices_64 = VECTOR_LOAD<int64_t, M2>(const_cast<int64_t*>(&indices[i * indices_cols + j]), vl);
+                auto v_updates = VECTOR_LOAD<float, M1>(const_cast<float*>(&updates[i * indices_cols + j]), vl);
                 
-                // Convert 64-bit indices to 32-bit and scale by stride
-                vint32m1_t v_indices_32 = __riscv_vnsra_wx_i32m1(v_indices_64, 0, vl);
-                vint32m1_t v_byte_offsets = __riscv_vmul_vx_i32m1(v_indices_32, data_cols * sizeof(float), vl);
+                // Convert 64-bit indices to 32-bit using narrowing wrapper
+                auto v_indices_32 = VECTOR_NARROW_SRA_VX<int32_t, M1>(v_indices_64, 0, vl);
+                
+                // Scale by stride using arithmetic wrapper
+                auto v_byte_offsets = VECTOR_MUL<int32_t, M1>(v_indices_32, data_cols * sizeof(float), vl);
                 
                 // Add column offset (j + vid to get absolute column position)
-                vuint32m1_t v_vid = __riscv_vid_v_u32m1(vl);
-                vuint32m1_t v_col_idx = __riscv_vadd_vx_u32m1(v_vid, j, vl);
-                vuint32m1_t v_col_offsets_u = __riscv_vmul_vx_u32m1(v_col_idx, sizeof(float), vl);
-                vint32m1_t v_col_offsets = __riscv_vreinterpret_v_u32m1_i32m1(v_col_offsets_u);
-                vint32m1_t v_final_offsets = __riscv_vadd_vv_i32m1(v_byte_offsets, v_col_offsets, vl);
+                auto v_vid = VECTOR_VID<uint32_t, M1>(vl);
+                auto v_col_idx = VECTOR_ADD<uint32_t, M1>(v_vid, j, vl);
+                auto v_col_offsets_u = VECTOR_MUL<uint32_t, M1>(v_col_idx, sizeof(float), vl);
+                auto v_col_offsets = VECTOR_REINTERPRET<uint32_t, int32_t, M1>(v_col_offsets_u);
+                auto v_final_offsets = VECTOR_ADD<int32_t, M1>(v_byte_offsets, v_col_offsets, vl);
                 
-                // Indexed store
-                vuint32m1_t v_offsets_u = __riscv_vreinterpret_v_i32m1_u32m1(v_final_offsets);
-                __riscv_vsuxei32_v_f32m1(output, v_offsets_u, v_updates, vl);
+                // Indexed store using wrapper
+                auto v_offsets_u = VECTOR_REINTERPRET<int32_t, uint32_t, M1>(v_final_offsets);
+                VECTOR_INDEXED_STORE_32<float, M1>(output, v_offsets_u, v_updates, vl);
                 
                 j += vl;
             }
@@ -90,19 +93,19 @@ void scatter_elements_e32m1(
             float* row_output = &output[i * data_cols];
             size_t j = 0;
             while (j < indices_cols) {
-                size_t vl = __riscv_vsetvl_e32m1(indices_cols - j);
+                size_t vl = SET_VECTOR_LENGTH<float, M1>(indices_cols - j);
                 
-                // Load indices and updates
-                vint64m2_t v_indices_64 = __riscv_vle64_v_i64m2(&indices[i * indices_cols + j], vl);
-                vfloat32m1_t v_updates = __riscv_vle32_v_f32m1(&updates[i * indices_cols + j], vl);
+                // Load indices and updates using wrappers
+                auto v_indices_64 = VECTOR_LOAD<int64_t, M2>(const_cast<int64_t*>(&indices[i * indices_cols + j]), vl);
+                auto v_updates = VECTOR_LOAD<float, M1>(const_cast<float*>(&updates[i * indices_cols + j]), vl);
                 
-                // Convert to byte offsets
-                vint32m1_t v_indices_32 = __riscv_vnsra_wx_i32m1(v_indices_64, 0, vl);
-                vint32m1_t v_byte_offsets = __riscv_vsll_vx_i32m1(v_indices_32, 2, vl); // multiply by 4
+                // Convert to 32-bit indices and create byte offsets
+                auto v_indices_32 = VECTOR_NARROW_SRA_VX<int32_t, M1>(v_indices_64, 0, vl);
+                auto v_byte_offsets = VECTOR_SLL<int32_t, M1>(v_indices_32, 2, vl); // multiply by 4
                 
-                // Indexed store
-                vuint32m1_t v_offsets_u = __riscv_vreinterpret_v_i32m1_u32m1(v_byte_offsets);
-                __riscv_vsuxei32_v_f32m1(row_output, v_offsets_u, v_updates, vl);
+                // Indexed store using wrapper
+                auto v_offsets_u = VECTOR_REINTERPRET<int32_t, uint32_t, M1>(v_byte_offsets);
+                VECTOR_INDEXED_STORE_32<float, M1>(row_output, v_offsets_u, v_updates, vl);
                 
                 j += vl;
             }
@@ -112,187 +115,193 @@ void scatter_elements_e32m1(
 
 // LMUL=2 version
 void scatter_elements_e32m2(
-    const float* data,
-    const int64_t* indices,
-    const float* updates,
-    float* output,
-    size_t data_rows,
-    size_t data_cols,
-    size_t indices_rows,
-    size_t indices_cols,
-    int axis
+	const float* data,
+	const int64_t* indices,
+	const float* updates,
+	float* output,
+	size_t data_rows,
+	size_t data_cols,
+	size_t indices_rows,
+	size_t indices_cols,
+	int axis
 ) {
-    memcpy(output, data, data_rows * data_cols * sizeof(float));
-    
-    if (axis == 0) {
-        for (size_t i = 0; i < indices_rows; i++) {
-            size_t j = 0;
-            while (j < indices_cols) {
-                size_t vl = __riscv_vsetvl_e32m2(indices_cols - j);
-                
-                vint64m4_t v_indices_64 = __riscv_vle64_v_i64m4(&indices[i * indices_cols + j], vl);
-                vfloat32m2_t v_updates = __riscv_vle32_v_f32m2(&updates[i * indices_cols + j], vl);
-                
-                vint32m2_t v_indices_32 = __riscv_vnsra_wx_i32m2(v_indices_64, 0, vl);
-                vint32m2_t v_byte_offsets = __riscv_vmul_vx_i32m2(v_indices_32, data_cols * sizeof(float), vl);
-                vuint32m2_t v_vid = __riscv_vid_v_u32m2(vl);
-                vuint32m2_t v_col_idx = __riscv_vadd_vx_u32m2(v_vid, j, vl);
-                vuint32m2_t v_col_offsets_u = __riscv_vmul_vx_u32m2(v_col_idx, sizeof(float), vl);
-                vint32m2_t v_col_offsets = __riscv_vreinterpret_v_u32m2_i32m2(v_col_offsets_u);
-                vint32m2_t v_final_offsets = __riscv_vadd_vv_i32m2(v_byte_offsets, v_col_offsets, vl);
-                
-                vuint32m2_t v_offsets_u = __riscv_vreinterpret_v_i32m2_u32m2(v_final_offsets);
-                __riscv_vsuxei32_v_f32m2(output, v_offsets_u, v_updates, vl);
-                
-                j += vl;
-            }
-        }
-    } else if (axis == 1) {
-        for (size_t i = 0; i < indices_rows; i++) {
-            float* row_output = &output[i * data_cols];
-            size_t j = 0;
-            while (j < indices_cols) {
-                size_t vl = __riscv_vsetvl_e32m2(indices_cols - j);
-                
-                vint64m4_t v_indices_64 = __riscv_vle64_v_i64m4(&indices[i * indices_cols + j], vl);
-                vfloat32m2_t v_updates = __riscv_vle32_v_f32m2(&updates[i * indices_cols + j], vl);
-                
-                vint32m2_t v_indices_32 = __riscv_vnsra_wx_i32m2(v_indices_64, 0, vl);
-                vint32m2_t v_byte_offsets = __riscv_vsll_vx_i32m2(v_indices_32, 2, vl);
-                
-                vuint32m2_t v_offsets_u = __riscv_vreinterpret_v_i32m2_u32m2(v_byte_offsets);
-                __riscv_vsuxei32_v_f32m2(row_output, v_offsets_u, v_updates, vl);
-                
-                j += vl;
-            }
-        }
-    }
+	memcpy(output, data, data_rows * data_cols * sizeof(float));
+	
+	if (axis == 0) {
+		for (size_t i = 0; i < indices_rows; i++) {
+			size_t j = 0;
+			while (j < indices_cols) {
+				size_t vl = SET_VECTOR_LENGTH<float, M2>(indices_cols - j);
+				
+				auto v_indices_64 = VECTOR_LOAD<int64_t, M4>(const_cast<int64_t*>(&indices[i * indices_cols + j]), vl);
+				auto v_updates = VECTOR_LOAD<float, M2>(const_cast<float*>(&updates[i * indices_cols + j]), vl);
+				
+				auto v_indices_32 = VECTOR_NARROW_SRA_VX<int32_t, M2>(v_indices_64, 0, vl);
+				auto v_byte_offsets = VECTOR_MUL<int32_t, M2>(v_indices_32, data_cols * sizeof(float), vl);
+				auto v_vid = VECTOR_VID<uint32_t, M2>(vl);
+				auto v_col_idx = VECTOR_ADD<uint32_t, M2>(v_vid, j, vl);
+				auto v_col_offsets_u = VECTOR_MUL<uint32_t, M2>(v_col_idx, sizeof(float), vl);
+				auto v_col_offsets = VECTOR_REINTERPRET<uint32_t, int32_t, M2>(v_col_offsets_u);
+				auto v_final_offsets = VECTOR_ADD<int32_t, M2>(v_byte_offsets, v_col_offsets, vl);
+				
+				auto v_offsets_u = VECTOR_REINTERPRET<int32_t, uint32_t, M2>(v_final_offsets);
+				VECTOR_INDEXED_STORE_32<float, M2>(output, v_offsets_u, v_updates, vl);
+				
+				j += vl;
+			}
+		}
+	} else if (axis == 1) {
+		for (size_t i = 0; i < indices_rows; i++) {
+			float* row_output = &output[i * data_cols];
+			size_t j = 0;
+			while (j < indices_cols) {
+				size_t vl = SET_VECTOR_LENGTH<float, M2>(indices_cols - j);
+				
+				auto v_indices_64 = VECTOR_LOAD<int64_t, M4>(const_cast<int64_t*>(&indices[i * indices_cols + j]), vl);
+				auto v_updates = VECTOR_LOAD<float, M2>(const_cast<float*>(&updates[i * indices_cols + j]), vl);
+				
+				auto v_indices_32 = VECTOR_NARROW_SRA_VX<int32_t, M2>(v_indices_64, 0, vl);
+				auto v_byte_offsets = VECTOR_SLL<int32_t, M2>(v_indices_32, 2, vl);
+				
+				auto v_offsets_u = VECTOR_REINTERPRET<int32_t, uint32_t, M2>(v_byte_offsets);
+				VECTOR_INDEXED_STORE_32<float, M2>(row_output, v_offsets_u, v_updates, vl);
+				
+				j += vl;
+			}
+		}
+	}
 }
 
 // LMUL=4 version
 void scatter_elements_e32m4(
-    const float* data,
-    const int64_t* indices,
-    const float* updates,
-    float* output,
-    size_t data_rows,
-    size_t data_cols,
-    size_t indices_rows,
-    size_t indices_cols,
-    int axis
+	const float* data,
+	const int64_t* indices,
+	const float* updates,
+	float* output,
+	size_t data_rows,
+	size_t data_cols,
+	size_t indices_rows,
+	size_t indices_cols,
+	int axis
 ) {
-    memcpy(output, data, data_rows * data_cols * sizeof(float));
-    
-    if (axis == 0) {
-        for (size_t i = 0; i < indices_rows; i++) {
-            size_t j = 0;
-            while (j < indices_cols) {
-                size_t vl = __riscv_vsetvl_e32m4(indices_cols - j);
-                
-                vint64m8_t v_indices_64 = __riscv_vle64_v_i64m8(&indices[i * indices_cols + j], vl);
-                vfloat32m4_t v_updates = __riscv_vle32_v_f32m4(&updates[i * indices_cols + j], vl);
-                
-                vint32m4_t v_indices_32 = __riscv_vnsra_wx_i32m4(v_indices_64, 0, vl);
-                vint32m4_t v_byte_offsets = __riscv_vmul_vx_i32m4(v_indices_32, data_cols * sizeof(float), vl);
-                vuint32m4_t v_vid = __riscv_vid_v_u32m4(vl);
-                vuint32m4_t v_col_idx = __riscv_vadd_vx_u32m4(v_vid, j, vl);
-                vuint32m4_t v_col_offsets_u = __riscv_vmul_vx_u32m4(v_col_idx, sizeof(float), vl);
-                vint32m4_t v_col_offsets = __riscv_vreinterpret_v_u32m4_i32m4(v_col_offsets_u);
-                vint32m4_t v_final_offsets = __riscv_vadd_vv_i32m4(v_byte_offsets, v_col_offsets, vl);
-                
-                vuint32m4_t v_offsets_u = __riscv_vreinterpret_v_i32m4_u32m4(v_final_offsets);
-                __riscv_vsuxei32_v_f32m4(output, v_offsets_u, v_updates, vl);
-                
-                j += vl;
-            }
-        }
-    } else if (axis == 1) {
-        for (size_t i = 0; i < indices_rows; i++) {
-            float* row_output = &output[i * data_cols];
-            size_t j = 0;
-            while (j < indices_cols) {
-                size_t vl = __riscv_vsetvl_e32m4(indices_cols - j);
-                
-                vint64m8_t v_indices_64 = __riscv_vle64_v_i64m8(&indices[i * indices_cols + j], vl);
-                vfloat32m4_t v_updates = __riscv_vle32_v_f32m4(&updates[i * indices_cols + j], vl);
-                
-                vint32m4_t v_indices_32 = __riscv_vnsra_wx_i32m4(v_indices_64, 0, vl);
-                vint32m4_t v_byte_offsets = __riscv_vsll_vx_i32m4(v_indices_32, 2, vl);
-                
-                vuint32m4_t v_offsets_u = __riscv_vreinterpret_v_i32m4_u32m4(v_byte_offsets);
-                __riscv_vsuxei32_v_f32m4(row_output, v_offsets_u, v_updates, vl);
-                
-                j += vl;
-            }
-        }
-    }
+	memcpy(output, data, data_rows * data_cols * sizeof(float));
+	
+	if (axis == 0) {
+		for (size_t i = 0; i < indices_rows; i++) {
+			size_t j = 0;
+			while (j < indices_cols) {
+				size_t vl = SET_VECTOR_LENGTH<float, M4>(indices_cols - j);
+				
+				auto v_indices_64 = VECTOR_LOAD<int64_t, M8>(const_cast<int64_t*>(&indices[i * indices_cols + j]), vl);
+				auto v_updates = VECTOR_LOAD<float, M4>(const_cast<float*>(&updates[i * indices_cols + j]), vl);
+				
+				auto v_indices_32 = VECTOR_NARROW_SRA_VX<int32_t, M4>(v_indices_64, 0, vl);
+				auto v_byte_offsets = VECTOR_MUL<int32_t, M4>(v_indices_32, data_cols * sizeof(float), vl);
+				auto v_vid = VECTOR_VID<uint32_t, M4>(vl);
+				auto v_col_idx = VECTOR_ADD<uint32_t, M4>(v_vid, j, vl);
+				auto v_col_offsets_u = VECTOR_MUL<uint32_t, M4>(v_col_idx, sizeof(float), vl);
+				auto v_col_offsets = VECTOR_REINTERPRET<uint32_t, int32_t, M4>(v_col_offsets_u);
+				auto v_final_offsets = VECTOR_ADD<int32_t, M4>(v_byte_offsets, v_col_offsets, vl);
+				
+				auto v_offsets_u = VECTOR_REINTERPRET<int32_t, uint32_t, M4>(v_final_offsets);
+				VECTOR_INDEXED_STORE_32<float, M4>(output, v_offsets_u, v_updates, vl);
+				
+				j += vl;
+			}
+		}
+	} else if (axis == 1) {
+		for (size_t i = 0; i < indices_rows; i++) {
+			float* row_output = &output[i * data_cols];
+			size_t j = 0;
+			while (j < indices_cols) {
+				size_t vl = SET_VECTOR_LENGTH<float, M4>(indices_cols - j);
+				
+				auto v_indices_64 = VECTOR_LOAD<int64_t, M8>(const_cast<int64_t*>(&indices[i * indices_cols + j]), vl);
+				auto v_updates = VECTOR_LOAD<float, M4>(const_cast<float*>(&updates[i * indices_cols + j]), vl);
+				
+				auto v_indices_32 = VECTOR_NARROW_SRA_VX<int32_t, M4>(v_indices_64, 0, vl);
+				auto v_byte_offsets = VECTOR_SLL<int32_t, M4>(v_indices_32, 2, vl);
+				
+				auto v_offsets_u = VECTOR_REINTERPRET<int32_t, uint32_t, M4>(v_byte_offsets);
+				VECTOR_INDEXED_STORE_32<float, M4>(row_output, v_offsets_u, v_updates, vl);
+				
+				j += vl;
+			}
+		}
+	}
 }
 
 // LMUL=8 version
 void scatter_elements_e32m8(
-    const float* data,
-    const int64_t* indices,
-    const float* updates,
-    float* output,
-    size_t data_rows,
-    size_t data_cols,
-    size_t indices_rows,
-    size_t indices_cols,
-    int axis
+	const float* data,
+	const int64_t* indices,
+	const float* updates,
+	float* output,
+	size_t data_rows,
+	size_t data_cols,
+	size_t indices_rows,
+	size_t indices_cols,
+	int axis
 ) {
-    memcpy(output, data, data_rows * data_cols * sizeof(float));
-    
-    if (axis == 0) {
-        for (size_t i = 0; i < indices_rows; i++) {
-            size_t j = 0;
-            while (j < indices_cols) {
-                size_t vl = __riscv_vsetvl_e32m8(indices_cols - j);
-                
-                // For m8, we need to process in smaller chunks for indices
-                // since we can't have m16 for int64
-                size_t vl_half = vl / 2;
-                if (vl_half == 0) vl_half = 1;
-                
-                // Process first half
-                vint64m8_t v_indices_64_1 = __riscv_vle64_v_i64m8(&indices[i * indices_cols + j], vl_half);
-                vfloat32m4_t v_updates_1 = __riscv_vle32_v_f32m4(&updates[i * indices_cols + j], vl_half);
-                
-                vint32m4_t v_indices_32_1 = __riscv_vnsra_wx_i32m4(v_indices_64_1, 0, vl_half);
-                vint32m4_t v_byte_offsets_1 = __riscv_vmul_vx_i32m4(v_indices_32_1, data_cols * sizeof(float), vl_half);
-                vuint32m4_t v_vid = __riscv_vid_v_u32m4(vl_half);
-                vuint32m4_t v_col_idx = __riscv_vadd_vx_u32m4(v_vid, j, vl_half);
-                vuint32m4_t v_col_offsets_u_1 = __riscv_vmul_vx_u32m4(v_col_idx, sizeof(float), vl_half);
-                vint32m4_t v_col_offsets_1 = __riscv_vreinterpret_v_u32m4_i32m4(v_col_offsets_u_1);
-                vint32m4_t v_final_offsets_1 = __riscv_vadd_vv_i32m4(v_byte_offsets_1, v_col_offsets_1, vl_half);
-                
-                vuint32m4_t v_offsets_u_1 = __riscv_vreinterpret_v_i32m4_u32m4(v_final_offsets_1);
-                __riscv_vsuxei32_v_f32m4(output, v_offsets_u_1, v_updates_1, vl_half);
-                
-                j += vl_half;
-            }
-        }
-    } else if (axis == 1) {
-        for (size_t i = 0; i < indices_rows; i++) {
-            float* row_output = &output[i * data_cols];
-            size_t j = 0;
-            while (j < indices_cols) {
-                size_t vl = __riscv_vsetvl_e32m8(indices_cols - j);
-                size_t vl_half = vl / 2;
-                if (vl_half == 0) vl_half = 1;
-                
-                vint64m8_t v_indices_64 = __riscv_vle64_v_i64m8(&indices[i * indices_cols + j], vl_half);
-                vfloat32m4_t v_updates = __riscv_vle32_v_f32m4(&updates[i * indices_cols + j], vl_half);
-                
-                vint32m4_t v_indices_32 = __riscv_vnsra_wx_i32m4(v_indices_64, 0, vl_half);
-                vint32m4_t v_byte_offsets = __riscv_vsll_vx_i32m4(v_indices_32, 2, vl_half);
-                
-                vuint32m4_t v_offsets_u = __riscv_vreinterpret_v_i32m4_u32m4(v_byte_offsets);
-                __riscv_vsuxei32_v_f32m4(row_output, v_offsets_u, v_updates, vl_half);
-                
-                j += vl_half;
-            }
-        }
-    }
+	memcpy(output, data, data_rows * data_cols * sizeof(float));
+	
+	if (axis == 0) {
+		for (size_t i = 0; i < indices_rows; i++) {
+			size_t j = 0;
+			while (j < indices_cols) {
+				size_t vl = SET_VECTOR_LENGTH<float, M8>(indices_cols - j);
+				
+				// For m8, we need to process in smaller chunks for indices
+				// since we can't have m16 for int64. We process vl elements using m4 twice.
+				size_t current_vl = vl;
+				while (current_vl > 0) {
+					size_t chunk_vl = SET_VECTOR_LENGTH<float, M4>(current_vl);
+
+					auto v_indices_64 = VECTOR_LOAD<int64_t, M8>(const_cast<int64_t*>(&indices[i * indices_cols + j]), chunk_vl);
+					auto v_updates = VECTOR_LOAD<float, M4>(const_cast<float*>(&updates[i * indices_cols + j]), chunk_vl);
+					
+					auto v_indices_32 = VECTOR_NARROW_SRA_VX<int32_t, M4>(v_indices_64, 0, chunk_vl);
+					auto v_byte_offsets = VECTOR_MUL<int32_t, M4>(v_indices_32, data_cols * sizeof(float), chunk_vl);
+					auto v_vid = VECTOR_VID<uint32_t, M4>(chunk_vl);
+					auto v_col_idx = VECTOR_ADD<uint32_t, M4>(v_vid, j, chunk_vl);
+					auto v_col_offsets_u = VECTOR_MUL<uint32_t, M4>(v_col_idx, sizeof(float), chunk_vl);
+					auto v_col_offsets = VECTOR_REINTERPRET<uint32_t, int32_t, M4>(v_col_offsets_u);
+					auto v_final_offsets = VECTOR_ADD<int32_t, M4>(v_byte_offsets, v_col_offsets, chunk_vl);
+					
+					auto v_offsets_u = VECTOR_REINTERPRET<int32_t, uint32_t, M4>(v_final_offsets);
+					VECTOR_INDEXED_STORE_32<float, M4>(output, v_offsets_u, v_updates, chunk_vl);
+					
+					j += chunk_vl;
+					current_vl -= chunk_vl;
+				}
+			}
+		}
+	} else if (axis == 1) {
+		for (size_t i = 0; i < indices_rows; i++) {
+			float* row_output = &output[i * data_cols];
+			size_t j = 0;
+			while (j < indices_cols) {
+				size_t vl = SET_VECTOR_LENGTH<float, M8>(indices_cols - j);
+				
+				size_t current_vl = vl;
+				while (current_vl > 0) {
+					size_t chunk_vl = SET_VECTOR_LENGTH<float, M4>(current_vl);
+
+					auto v_indices_64 = VECTOR_LOAD<int64_t, M8>(const_cast<int64_t*>(&indices[i * indices_cols + j]), chunk_vl);
+					auto v_updates = VECTOR_LOAD<float, M4>(const_cast<float*>(&updates[i * indices_cols + j]), chunk_vl);
+					
+					auto v_indices_32 = VECTOR_NARROW_SRA_VX<int32_t, M4>(v_indices_64, 0, chunk_vl);
+					auto v_byte_offsets = VECTOR_SLL<int32_t, M4>(v_indices_32, 2, chunk_vl);
+					
+					auto v_offsets_u = VECTOR_REINTERPRET<int32_t, uint32_t, M4>(v_byte_offsets);
+					VECTOR_INDEXED_STORE_32<float, M4>(row_output, v_offsets_u, v_updates, chunk_vl);
+					
+					j += chunk_vl;
+					current_vl -= chunk_vl;
+				}
+			}
+		}
+	}
 }
 
 
