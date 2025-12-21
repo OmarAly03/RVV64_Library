@@ -56,7 +56,13 @@ def tensor_add(A: np.ndarray, B: np.ndarray, variant="rvv"):
     
     if variant == "scalar":
         tensor_add_wrapper.tensor_add_scalar(ptr_f32(A), ptr_f32(B), ptr_f32(C), size)
-    elif variant == "rvv":
+    elif variant == "M1":
+        tensor_add_wrapper.tensor_add_e32m1(ptr_f32(A), ptr_f32(B), ptr_f32(C), size)
+    elif variant == "M2":
+        tensor_add_wrapper.tensor_add_e32m2(ptr_f32(A), ptr_f32(B), ptr_f32(C), size)
+    elif variant == "M4":
+        tensor_add_wrapper.tensor_add_e32m4(ptr_f32(A), ptr_f32(B), ptr_f32(C), size)
+    elif variant == "M8":
         tensor_add_wrapper.tensor_add_e32m8(ptr_f32(A), ptr_f32(B), ptr_f32(C), size)
     else:
         raise ValueError(f"Unknown variant: {variant}")

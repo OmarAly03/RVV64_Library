@@ -14,6 +14,30 @@ _lib.tensor_add_scalar.argtypes = [
 ]
 _lib.tensor_add_scalar.restype = None
 
+_lib.tensor_add_e32m1.argtypes = [
+    ctypes.POINTER(ctypes.c_float),
+    ctypes.POINTER(ctypes.c_float),
+    ctypes.POINTER(ctypes.c_float),
+    ctypes.c_size_t,
+]
+_lib.tensor_add_e32m1.restype = None
+
+_lib.tensor_add_e32m2.argtypes = [
+    ctypes.POINTER(ctypes.c_float),
+    ctypes.POINTER(ctypes.c_float),
+    ctypes.POINTER(ctypes.c_float),
+    ctypes.c_size_t,
+]
+_lib.tensor_add_e32m2.restype = None
+
+_lib.tensor_add_e32m4.argtypes = [
+    ctypes.POINTER(ctypes.c_float),
+    ctypes.POINTER(ctypes.c_float),
+    ctypes.POINTER(ctypes.c_float),
+    ctypes.c_size_t,
+]
+_lib.tensor_add_e32m4.restype = None
+
 _lib.tensor_add_e32m8.argtypes = [
     ctypes.POINTER(ctypes.c_float),
     ctypes.POINTER(ctypes.c_float),
@@ -26,5 +50,14 @@ _lib.tensor_add_e32m8.restype = None
 def tensor_add_scalar(input_a, input_b, output, size):
     _lib.tensor_add_scalar(input_a, input_b, output, size)
 
+def tensor_add_e32m1(input_a, input_b, output, size):
+    _lib.tensor_add_e32m8(input_a, input_b, output, size)
+
+def tensor_add_e32m2(input_a, input_b, output, size):
+    _lib.tensor_add_e32m8(input_a, input_b, output, size)
+
+def tensor_add_e32m4(input_a, input_b, output, size):
+    _lib.tensor_add_e32m8(input_a, input_b, output, size)
+    
 def tensor_add_e32m8(input_a, input_b, output, size):
     _lib.tensor_add_e32m8(input_a, input_b, output, size)
