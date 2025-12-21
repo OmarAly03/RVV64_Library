@@ -6,6 +6,8 @@
 
 using namespace std;
 
+extern "C" {
+
 void matmul_e32m1(float *A, float *B, float *C, size_t M, size_t N, size_t K) {
     for (size_t i = 0; i < M; i++) {
         for (size_t j_cnt = N; j_cnt > 0; ) {
@@ -380,4 +382,6 @@ void matmul_tiled_e32m8(const float* A, const float* B, float* C,
             }
         }
     }
+}
+
 }

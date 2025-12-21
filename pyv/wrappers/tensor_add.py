@@ -51,13 +51,13 @@ def tensor_add_scalar(input_a, input_b, output, size):
     _lib.tensor_add_scalar(input_a, input_b, output, size)
 
 def tensor_add_e32m1(input_a, input_b, output, size):
-    _lib.tensor_add_e32m8(input_a, input_b, output, size)
+    _lib.tensor_add_e32m1(input_a, input_b, output, size)
 
 def tensor_add_e32m2(input_a, input_b, output, size):
-    _lib.tensor_add_e32m8(input_a, input_b, output, size)
+    _lib.tensor_add_e32m2(input_a, input_b, output, size)
 
 def tensor_add_e32m4(input_a, input_b, output, size):
-    _lib.tensor_add_e32m8(input_a, input_b, output, size)
+    _lib.tensor_add_e32m4(input_a, input_b, output, size)
     
 def tensor_add_e32m8(input_a, input_b, output, size):
     _lib.tensor_add_e32m8(input_a, input_b, output, size)
