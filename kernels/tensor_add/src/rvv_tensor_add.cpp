@@ -1,5 +1,6 @@
 #include <cstddef>
 #include <riscv_vector.h>
+#include "rvv_defs.hpp"
 
 using namespace std;
 
@@ -24,15 +25,11 @@ void tensor_add_e32m1(const float* input_a, const float* input_b, float* output,
     size_t vl;
 
     while (cnt > 0) {
-        vl = __riscv_vsetvl_e32m1(cnt);
-        
-        vfloat32m1_t v_a = __riscv_vle32_v_f32m1(in_a_ptr, vl);
-        vfloat32m1_t v_b = __riscv_vle32_v_f32m1(in_b_ptr, vl);
-        
-        // v_out = v_a + v_b
-        vfloat32m1_t v_out = __riscv_vfadd_vv_f32m1(v_a, v_b, vl);
-        
-        __riscv_vse32_v_f32m1(out_ptr, v_out, vl);
+        vl = SET_VECTOR_LENGTH<float, M1>(cnt);
+        auto v_a = VECTOR_LOAD<float, M1>(in_a_ptr, vl);
+        auto v_b = VECTOR_LOAD<float, M1>(in_b_ptr, vl);
+        auto v_out = VECTOR_ADD<float, M1>(v_a, v_b, vl);
+        VECTOR_STORE<float, M1>(out_ptr, v_out, vl);
         
         in_a_ptr += vl;
         in_b_ptr += vl;
@@ -51,11 +48,12 @@ void tensor_add_e32m2(const float* input_a, const float* input_b, float* output,
     size_t vl;
 
     while (cnt > 0) {
-        vl = __riscv_vsetvl_e32m2(cnt);
-        vfloat32m2_t v_a = __riscv_vle32_v_f32m2(in_a_ptr, vl);
-        vfloat32m2_t v_b = __riscv_vle32_v_f32m2(in_b_ptr, vl);
-        vfloat32m2_t v_out = __riscv_vfadd_vv_f32m2(v_a, v_b, vl);
-        __riscv_vse32_v_f32m2(out_ptr, v_out, vl);
+        vl = SET_VECTOR_LENGTH<float, M2>(cnt);
+        auto v_a = VECTOR_LOAD<float, M2>(in_a_ptr, vl);
+        auto v_b = VECTOR_LOAD<float, M2>(in_b_ptr, vl);
+        auto v_out = VECTOR_ADD<float, M2>(v_a, v_b, vl);
+        VECTOR_STORE<float, M2>(out_ptr, v_out, vl);
+
         in_a_ptr += vl;
         in_b_ptr += vl;
         out_ptr += vl;
@@ -73,11 +71,12 @@ void tensor_add_e32m4(const float* input_a, const float* input_b, float* output,
     size_t vl;
 
     while (cnt > 0) {
-        vl = __riscv_vsetvl_e32m4(cnt);
-        vfloat32m4_t v_a = __riscv_vle32_v_f32m4(in_a_ptr, vl);
-        vfloat32m4_t v_b = __riscv_vle32_v_f32m4(in_b_ptr, vl);
-        vfloat32m4_t v_out = __riscv_vfadd_vv_f32m4(v_a, v_b, vl);
-        __riscv_vse32_v_f32m4(out_ptr, v_out, vl);
+        vl = SET_VECTOR_LENGTH<float, M4>(cnt);
+        auto v_a = VECTOR_LOAD<float, M4>(in_a_ptr, vl);
+        auto v_b = VECTOR_LOAD<float, M4>(in_b_ptr, vl);
+        auto v_out = VECTOR_ADD<float, M4>(v_a, v_b, vl);
+        VECTOR_STORE<float, M4>(out_ptr, v_out, vl);
+
         in_a_ptr += vl;
         in_b_ptr += vl;
         out_ptr += vl;
@@ -95,11 +94,12 @@ void tensor_add_e32m8(const float* input_a, const float* input_b, float* output,
     size_t vl;
 
     while (cnt > 0) {
-        vl = __riscv_vsetvl_e32m8(cnt);
-        vfloat32m8_t v_a = __riscv_vle32_v_f32m8(in_a_ptr, vl);
-        vfloat32m8_t v_b = __riscv_vle32_v_f32m8(in_b_ptr, vl);
-        vfloat32m8_t v_out = __riscv_vfadd_vv_f32m8(v_a, v_b, vl);
-        __riscv_vse32_v_f32m8(out_ptr, v_out, vl);
+        vl = SET_VECTOR_LENGTH<float, M8>(cnt);
+        auto v_a = VECTOR_LOAD<float, M8>(in_a_ptr, vl);
+        auto v_b = VECTOR_LOAD<float, M8>(in_b_ptr, vl);
+        auto v_out = VECTOR_ADD<float, M8>(v_a, v_b, vl);
+        VECTOR_STORE<float, M8>(out_ptr, v_out, vl);
+
         in_a_ptr += vl;
         in_b_ptr += vl;
         out_ptr += vl;

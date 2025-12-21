@@ -2,7 +2,7 @@ CC = riscv64-unknown-linux-gnu-g++
 FLAGS = -march=rv64gcv -static
 
 # Include directories
-INCLUDES = -Iinclude -I../lib
+INCLUDES = -Iinclude -I../../lib
 
 # --- TensorAdd ---
 SRCS_TENSOR_ADD = run_tensor_add.cpp src/rvv_tensor_add.cpp src/utils.cpp

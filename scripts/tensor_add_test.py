@@ -15,7 +15,10 @@ print("Tensor D shape:", D.shape)
 print("Tensor E shape:", E.shape)
 
 add_scalar = tensor_add(D, E, variant="scalar")
-add_rvv = tensor_add(D, E, variant="rvv")
+add_rvv = tensor_add(D, E, variant="M1")
+add_rvv = tensor_add(D, E, variant="M2")
+add_rvv = tensor_add(D, E, variant="M4")
+add_rvv = tensor_add(D, E, variant="M8")
 
 print("Tensor add results match:", np.allclose(add_scalar, add_rvv))
 print("Tensor add output shape:", add_scalar.shape)
