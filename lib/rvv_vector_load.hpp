@@ -97,6 +97,24 @@ inline auto VECTOR_LOAD(const T* base, size_t vl) {
         else if constexpr (LMUL == M4) return __riscv_vle32_v_i32m4(base, vl);
         else if constexpr (LMUL == M8) return __riscv_vle32_v_i32m8(base, vl);
     }
+    else if constexpr (std::is_same_v<T, int64_t>) {  // ADD THIS MISSING CASE
+        if constexpr (LMUL == M1) return __riscv_vle64_v_i64m1(base, vl);
+        else if constexpr (LMUL == M2) return __riscv_vle64_v_i64m2(base, vl);
+        else if constexpr (LMUL == M4) return __riscv_vle64_v_i64m4(base, vl);
+        else if constexpr (LMUL == M8) return __riscv_vle64_v_i64m8(base, vl);
+    }
+    else if constexpr (std::is_same_v<T, uint32_t>) {  // ADD UINT32_T TOO
+        if constexpr (LMUL == M1) return __riscv_vle32_v_u32m1(base, vl);
+        else if constexpr (LMUL == M2) return __riscv_vle32_v_u32m2(base, vl);
+        else if constexpr (LMUL == M4) return __riscv_vle32_v_u32m4(base, vl);
+        else if constexpr (LMUL == M8) return __riscv_vle32_v_u32m8(base, vl);
+    }
+    else if constexpr (std::is_same_v<T, uint64_t>) {  // ADD UINT64_T TOO
+        if constexpr (LMUL == M1) return __riscv_vle64_v_u64m1(base, vl);
+        else if constexpr (LMUL == M2) return __riscv_vle64_v_u64m2(base, vl);
+        else if constexpr (LMUL == M4) return __riscv_vle64_v_u64m4(base, vl);
+        else if constexpr (LMUL == M8) return __riscv_vle64_v_u64m8(base, vl);
+    }
     else if constexpr (std::is_same_v<T, double>) {
         if constexpr (LMUL == M1) return __riscv_vle64_v_f64m1(base, vl);
         else if constexpr (LMUL == M2) return __riscv_vle64_v_f64m2(base, vl);
@@ -109,11 +127,23 @@ inline auto VECTOR_LOAD(const T* base, size_t vl) {
         else if constexpr (LMUL == M4) return __riscv_vle16_v_i16m4(base, vl);
         else if constexpr (LMUL == M8) return __riscv_vle16_v_i16m8(base, vl);
     }
+    else if constexpr (std::is_same_v<T, uint16_t>) {  // ADD UINT16_T TOO
+        if constexpr (LMUL == M1) return __riscv_vle16_v_u16m1(base, vl);
+        else if constexpr (LMUL == M2) return __riscv_vle16_v_u16m2(base, vl);
+        else if constexpr (LMUL == M4) return __riscv_vle16_v_u16m4(base, vl);
+        else if constexpr (LMUL == M8) return __riscv_vle16_v_u16m8(base, vl);
+    }
     else if constexpr (std::is_same_v<T, int8_t>) {
         if constexpr (LMUL == M1) return __riscv_vle8_v_i8m1(base, vl);
         else if constexpr (LMUL == M2) return __riscv_vle8_v_i8m2(base, vl);
         else if constexpr (LMUL == M4) return __riscv_vle8_v_i8m4(base, vl);
         else if constexpr (LMUL == M8) return __riscv_vle8_v_i8m8(base, vl);
+    }
+    else if constexpr (std::is_same_v<T, uint8_t>) {  // ADD UINT8_T TOO
+        if constexpr (LMUL == M1) return __riscv_vle8_v_u8m1(base, vl);
+        else if constexpr (LMUL == M2) return __riscv_vle8_v_u8m2(base, vl);
+        else if constexpr (LMUL == M4) return __riscv_vle8_v_u8m4(base, vl);
+        else if constexpr (LMUL == M8) return __riscv_vle8_v_u8m8(base, vl);
     }
 }
 

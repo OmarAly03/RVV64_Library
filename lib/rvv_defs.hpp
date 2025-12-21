@@ -17,6 +17,7 @@
 #include "rvv_reinterpret.hpp"
 #include "rvv_mask_ops.hpp"
 #include "rvv_indexed_load.hpp"
+#include "rvv_vector_narrow.hpp"
 
 #endif // RVV_DEFS_HPP
 
