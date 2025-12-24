@@ -1,55 +1,70 @@
 #include <iostream>
 #include <cstdlib>
-#include <vector>
+#include <cmath>
+#include <iomanip>
 #include "./include/defs.h"
 
+using namespace std;
+
 int main(int argc, char* argv[]) {
-    // --- Configuration ---
-    size_t N = 1, C = 3, H = 32, W = 32, KERNEL_SIZE = 3, STRIDE = 2;
-    bool CEIL_MODE = false;
+    // --- SET PARAMS ---
+    int N = 16, C = 1, H = 4, W = 4; 
+    int KH = 2, KW = 2;
+    int SH = 2, SW = 2;
+    int PH = 0, PW = 0;
 
-    if (argc >= 3) {
-        H = static_cast<size_t>(atoi(argv[1]));
-        W = static_cast<size_t>(atoi(argv[2]));
+    if (argc == 5) {
+        N = atoi(argv[1]);
+        C = atoi(argv[2]);
+        H = atoi(argv[3]);
+        W = atoi(argv[4]);
+    } else {
+        cerr << "Usage: " << argv[0] << " <batch> <channels> <height> <width>. Using default 16x1x4x4" << endl;
     }
+
+    // Standard output dimension calculation
+    int OH = (H + 2 * PH - KH) / SH + 1;
+    int OW = (W + 2 * PW - KW) / SW + 1;
+
+    size_t input_size = (size_t)N * C * H * W;
+    size_t output_size = (size_t)N * C * OH * OW;
+
+    // --- MEMORY ALLOCATION ---
+    float* in = new float[input_size];
+    float* out_scalar = new float[output_size];
+    float* out_rvv = new float[output_size];
+
+    // --- INITIALIZE INPUT ---
+    srand(42); 
+    for (size_t i = 0; i < input_size; i++) {
+        in[i] = (static_cast<float>(rand()) / RAND_MAX) * 10.0f;
+    }
+
+    // Fix: Write the complete input array, not just N elements
+    write_matrix_binary("./output_files/input.bin", in, input_size);
     
-    // Output dimensions are now calculated inside the tiled functions
-    size_t OH_approx = H / STRIDE; // Approximate for allocation
-    size_t OW_approx = W / STRIDE;
+    // --- EXECUTE SCALAR ---
+    maxpool_scalar(in, out_scalar, N, C, H, W, KH, KW, SH, SW, PH, PW);
+    write_matrix_binary("./output_files/maxpool_scalar.bin", out_scalar, output_size);
 
-    // --- Memory Allocation ---
-    std::vector<float> X(N * C * H * W);
-    // Allocate extra memory, as ceil_mode might slightly increase output size
-    std::vector<float> Y(N * C * (OH_approx + TILE_H) * (OW_approx + TILE_W));
-    std::vector<int64_t> I(N * C * (OH_approx + TILE_H) * (OW_approx + TILE_W));
+    // --- EXECUTE RVV ---
 
-    // --- Load Input Tensor ---
-    read_tensor_binary("./output_files/X.bin", X.data(), X.size());
+    maxpool_e32m1(in, out_rvv, N, C, H, W, KH, KW, SH, SW, PH, PW);
+    write_matrix_binary("./output_files/maxpool_e32m1.bin", out_rvv, output_size);
 
-    // --- Run Tiled Kernels and Save Outputs ---
-    // Note: The actual output size is determined by the kernel
-    maxpool_scalar_tiled(X.data(), Y.data(), I.data(), N, C, H, W, KERNEL_SIZE, STRIDE, CEIL_MODE);
-    size_t actual_OH = CALC_OUT_DIM(H, KERNEL_SIZE, STRIDE, CEIL_MODE); // Get actual size
-    size_t actual_OW = CALC_OUT_DIM(W, KERNEL_SIZE, STRIDE, CEIL_MODE);
-    size_t output_size = N * C * actual_OH * actual_OW;
-    write_tensor_binary_float("./output_files/Y_scalar.bin", Y.data(), output_size);
-    write_tensor_binary_int64("./output_files/I_scalar.bin", I.data(), output_size);
+    maxpool_e32m2(in, out_rvv, N, C, H, W, KH, KW, SH, SW, PH, PW);
+    write_matrix_binary("./output_files/maxpool_e32m2.bin", out_rvv, output_size);
 
-    maxpool_e32m1_tiled(X.data(), Y.data(), I.data(), N, C, H, W, KERNEL_SIZE, STRIDE, CEIL_MODE);
-    write_tensor_binary_float("./output_files/Y_e32m1.bin", Y.data(), output_size);
-    write_tensor_binary_int64("./output_files/I_e32m1.bin", I.data(), output_size);
+    maxpool_e32m4(in, out_rvv, N, C, H, W, KH, KW, SH, SW, PH, PW);
+    write_matrix_binary("./output_files/maxpool_e32m4.bin", out_rvv, output_size);
 
-    maxpool_e32m2_tiled(X.data(), Y.data(), I.data(), N, C, H, W, KERNEL_SIZE, STRIDE, CEIL_MODE);
-    write_tensor_binary_float("./output_files/Y_e32m2.bin", Y.data(), output_size);
-    write_tensor_binary_int64("./output_files/I_e32m2.bin", I.data(), output_size);
+    maxpool_e32m8(in, out_rvv, N, C, H, W, KH, KW, SH, SW, PH, PW);
+    write_matrix_binary("./output_files/maxpool_e32m8.bin", out_rvv, output_size);
 
-    maxpool_e32m4_tiled(X.data(), Y.data(), I.data(), N, C, H, W, KERNEL_SIZE, STRIDE, CEIL_MODE);
-    write_tensor_binary_float("./output_files/Y_e32m4.bin", Y.data(), output_size);
-    write_tensor_binary_int64("./output_files/I_e32m4.bin", I.data(), output_size);
+    // --- CLEANUP ---
+    delete[] in;
+    delete[] out_scalar;
+    delete[] out_rvv;
 
-    maxpool_e32m8_tiled(X.data(), Y.data(), I.data(), N, C, H, W, KERNEL_SIZE, STRIDE, CEIL_MODE);
-    write_tensor_binary_float("./output_files/Y_e32m8.bin", Y.data(), output_size);
-    write_tensor_binary_int64("./output_files/I_e32m8.bin", I.data(), output_size);
-    
     return 0;
 }

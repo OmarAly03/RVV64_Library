@@ -1,39 +1,31 @@
-CC = riscv64-linux-gnu-g++
+CC = riscv64-unknown-linux-gnu-g++
 FLAGS = -march=rv64gcv -static -O3
 
 # Include directories
-INCLUDES = -Iinclude
+INCLUDES = -Iinclude -I../../lib
 
-# Source files (ALL sources compiled together)
+# Source files (Update these to your MaxPool filenames)
+# Assuming your kernels are in src/maxpool.cpp
 SRCS = run_maxpool.cpp src/rvv_maxpool.cpp src/utils.cpp
 
 # Output binary
-TARGET = run_maxpool
+TARGET = ./output_files/run_maxpool
 
-# Default size for H and W
-SIZE ?= 32 32
+# Default Dimensions for 'make run'
+N ?= 16
+C ?= 1
+H ?= 4
+W ?= 4
 
-all: $(TARGET)
+$(TARGET): $(SRCS)
+	@mkdir -p output_files
+	@$(CC) $(FLAGS) $(INCLUDES) -o $@ $^
 
-# Rule to compile and link all sources directly into the executable
-$(TARGET): $(SRCS) include/defs.h
-	@echo "Compiling and Linking RISC-V MaxPool executable..."
-	@$(CC) $(FLAGS) $(INCLUDES) -o $@ $(SRCS)
-
-run: all
-	@mkdir -p ./output_files
-	@echo "--- 1. Generating ONNX model ---"
-	@python3 src/onnx_maxpool.py
-	@echo "\n--- 2. Generating input data (X.bin) ---"
-	@python3 generate_data.py $(SIZE)
-	@echo "\n--- 3. Running C++ kernels via QEMU ---"
-	@qemu-riscv64-static -cpu rv64,v=true,vlen=128,vext_spec=v1.0 ./$(TARGET) $(SIZE)
-	@echo "\n--- 4. Running final Python verification ---"
-	@python3 main.py $(SIZE)
+run: $(TARGET)
+	@qemu-riscv64 -cpu rv64,v=true,vlen=128 $(TARGET) $(N) $(C) $(H) $(W)
+	@python3 main.py $(N) $(C) $(H) $(W)
 
 clean:
-	@echo "Cleaning up..."
-	@rm -f $(TARGET) src/*.o *.o # Remove any leftover .o files
-	@rm -rf output_files
+	rm -f output_files/*.bin output_files/run_maxpool
 
-.PHONY: all run clean
+.PHONY: run clean
