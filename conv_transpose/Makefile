@@ -7,7 +7,7 @@ HOST_FLAGS = -O2
 INCLUDES = -Iinclude -I../lib
 
 # Source files
-SRCS = run_conv_transpose.cpp src/rvv_conv_transpose.cpp src/conv_transpose_scalar.cpp src/utils.cpp
+SRCS = run_conv_transpose.cpp src/rvv_conv_transpose.cpp general_rvv.cpp src/conv_transpose_scalar.cpp src/utils.cpp
 HOST_SRCS = run_conv_transpose.cpp src/conv_transpose_scalar.cpp src/utils.cpp
 
 # Output binary
