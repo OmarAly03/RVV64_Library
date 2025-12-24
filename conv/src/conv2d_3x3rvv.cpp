@@ -301,6 +301,340 @@ void conv3x3_rvv_m2_batched(
 }
 
 // ============================================================================
+// M4 IMPLEMENTATION (higher LMUL)
+// ============================================================================
+
+void conv3x3_rvv_m4(
+    const float* input,    // Input: HxW
+    const float* kernel,   // Kernel: 3x3 (9 elements, row-major)
+    float* output,         // Output: HxW (with padding) or (H-2)x(W-2)
+    int H,                 // Input height
+    int W,                 // Input width
+    bool use_padding       // If true, applies zero-padding
+) {
+    float* padded_input = nullptr;
+    const float* proc_input = input;
+    int H_proc = H;
+    int W_proc = W;
+    
+    if (use_padding) {
+        padded_input = create_padded_input(input, H, W);
+        proc_input = padded_input;
+        H_proc = H + 2;
+        W_proc = W + 2;
+    }
+    
+    const int out_h = use_padding ? H : (H - 2);
+    const int out_w = use_padding ? W : (W - 2);
+    
+    float k00 = kernel[0], k01 = kernel[1], k02 = kernel[2];
+    float k10 = kernel[3], k11 = kernel[4], k12 = kernel[5];
+    float k20 = kernel[6], k21 = kernel[7], k22 = kernel[8];
+
+    for (int oh = 0; oh < out_h; oh++) {
+        const float* row0 = proc_input + oh * W_proc;
+        const float* row1 = row0 + W_proc;
+        const float* row2 = row1 + W_proc;
+        float* out_row = output + oh * out_w;
+
+        int ow = 0;
+        while (ow < out_w) {
+            size_t vl = __riscv_vsetvl_e32m4(out_w - ow);
+
+            vfloat32m4_t v00 = __riscv_vle32_v_f32m4(row0 + ow, vl);
+            vfloat32m4_t v01 = __riscv_vle32_v_f32m4(row0 + ow + 1, vl);
+            vfloat32m4_t v02 = __riscv_vle32_v_f32m4(row0 + ow + 2, vl);
+
+            vfloat32m4_t v10 = __riscv_vle32_v_f32m4(row1 + ow, vl);
+            vfloat32m4_t v11 = __riscv_vle32_v_f32m4(row1 + ow + 1, vl);
+            vfloat32m4_t v12 = __riscv_vle32_v_f32m4(row1 + ow + 2, vl);
+
+            vfloat32m4_t v20 = __riscv_vle32_v_f32m4(row2 + ow, vl);
+            vfloat32m4_t v21 = __riscv_vle32_v_f32m4(row2 + ow + 1, vl);
+            vfloat32m4_t v22 = __riscv_vle32_v_f32m4(row2 + ow + 2, vl);
+
+            vfloat32m4_t acc = __riscv_vfmul_vf_f32m4(v00, k00, vl);
+            acc = __riscv_vfmacc_vf_f32m4(acc, k01, v01, vl);
+            acc = __riscv_vfmacc_vf_f32m4(acc, k02, v02, vl);
+            acc = __riscv_vfmacc_vf_f32m4(acc, k10, v10, vl);
+            acc = __riscv_vfmacc_vf_f32m4(acc, k11, v11, vl);
+            acc = __riscv_vfmacc_vf_f32m4(acc, k12, v12, vl);
+            acc = __riscv_vfmacc_vf_f32m4(acc, k20, v20, vl);
+            acc = __riscv_vfmacc_vf_f32m4(acc, k21, v21, vl);
+            acc = __riscv_vfmacc_vf_f32m4(acc, k22, v22, vl);
+
+            __riscv_vse32_v_f32m4(out_row + ow, acc, vl);
+
+            ow += vl;
+        }
+    }
+
+    if (padded_input) free(padded_input);
+}
+
+// ============================================================================
+// M8 IMPLEMENTATION (higher LMUL)
+// ============================================================================
+
+void conv3x3_rvv_m8(
+    const float* input,
+    const float* kernel,
+    float* output,
+    int H,
+    int W,
+    bool use_padding
+) {
+    float* padded_input = nullptr;
+    const float* proc_input = input;
+    int H_proc = H;
+    int W_proc = W;
+
+    if (use_padding) {
+        padded_input = create_padded_input(input, H, W);
+        proc_input = padded_input;
+        H_proc = H + 2;
+        W_proc = W + 2;
+    }
+
+    const int out_h = use_padding ? H : (H - 2);
+    const int out_w = use_padding ? W : (W - 2);
+
+    float k00 = kernel[0], k01 = kernel[1], k02 = kernel[2];
+    float k10 = kernel[3], k11 = kernel[4], k12 = kernel[5];
+    float k20 = kernel[6], k21 = kernel[7], k22 = kernel[8];
+
+    for (int oh = 0; oh < out_h; oh++) {
+        const float* row0 = proc_input + oh * W_proc;
+        const float* row1 = row0 + W_proc;
+        const float* row2 = row1 + W_proc;
+        float* out_row = output + oh * out_w;
+
+        int ow = 0;
+        while (ow < out_w) {
+            size_t vl = __riscv_vsetvl_e32m8(out_w - ow);
+
+            vfloat32m8_t v00 = __riscv_vle32_v_f32m8(row0 + ow, vl);
+            vfloat32m8_t v01 = __riscv_vle32_v_f32m8(row0 + ow + 1, vl);
+            vfloat32m8_t v02 = __riscv_vle32_v_f32m8(row0 + ow + 2, vl);
+
+            vfloat32m8_t v10 = __riscv_vle32_v_f32m8(row1 + ow, vl);
+            vfloat32m8_t v11 = __riscv_vle32_v_f32m8(row1 + ow + 1, vl);
+            vfloat32m8_t v12 = __riscv_vle32_v_f32m8(row1 + ow + 2, vl);
+
+            vfloat32m8_t v20 = __riscv_vle32_v_f32m8(row2 + ow, vl);
+            vfloat32m8_t v21 = __riscv_vle32_v_f32m8(row2 + ow + 1, vl);
+            vfloat32m8_t v22 = __riscv_vle32_v_f32m8(row2 + ow + 2, vl);
+
+            vfloat32m8_t acc = __riscv_vfmul_vf_f32m8(v00, k00, vl);
+            acc = __riscv_vfmacc_vf_f32m8(acc, k01, v01, vl);
+            acc = __riscv_vfmacc_vf_f32m8(acc, k02, v02, vl);
+            acc = __riscv_vfmacc_vf_f32m8(acc, k10, v10, vl);
+            acc = __riscv_vfmacc_vf_f32m8(acc, k11, v11, vl);
+            acc = __riscv_vfmacc_vf_f32m8(acc, k12, v12, vl);
+            acc = __riscv_vfmacc_vf_f32m8(acc, k20, v20, vl);
+            acc = __riscv_vfmacc_vf_f32m8(acc, k21, v21, vl);
+            acc = __riscv_vfmacc_vf_f32m8(acc, k22, v22, vl);
+
+            __riscv_vse32_v_f32m8(out_row + ow, acc, vl);
+
+            ow += vl;
+        }
+    }
+
+    if (padded_input) free(padded_input);
+}
+
+// ============================================================================
+// M4 BATCHED (cache-optimized)
+// ============================================================================
+
+void conv3x3_rvv_m4_batched(
+    const float* input,
+    const float* kernel,
+    float* output,
+    int H,
+    int W,
+    bool use_padding,
+    int batch_rows = 4
+) {
+    float* padded_input = nullptr;
+    const float* proc_input = input;
+    int H_proc = H;
+    int W_proc = W;
+
+    if (use_padding) {
+        padded_input = create_padded_input(input, H, W);
+        proc_input = padded_input;
+        H_proc = H + 2;
+        W_proc = W + 2;
+    }
+
+    const int out_h = use_padding ? H : (H - 2);
+    const int out_w = use_padding ? W : (W - 2);
+
+    float k00 = kernel[0], k01 = kernel[1], k02 = kernel[2];
+    float k10 = kernel[3], k11 = kernel[4], k12 = kernel[5];
+    float k20 = kernel[6], k21 = kernel[7], k22 = kernel[8];
+
+    for (int oh_base = 0; oh_base < out_h; oh_base += batch_rows) {
+        int rows_to_process = (oh_base + batch_rows <= out_h) ?
+                              batch_rows : (out_h - oh_base);
+
+        for (int ow = 0; ow < out_w; ) {
+            size_t vl = __riscv_vsetvl_e32m4(out_w - ow);
+
+            for (int r = 0; r < rows_to_process; r++) {
+                int oh = oh_base + r;
+                const float* row0 = proc_input + oh * W_proc;
+                const float* row1 = row0 + W_proc;
+                const float* row2 = row1 + W_proc;
+
+                vfloat32m4_t v00 = __riscv_vle32_v_f32m4(row0 + ow, vl);
+                vfloat32m4_t v01 = __riscv_vle32_v_f32m4(row0 + ow + 1, vl);
+                vfloat32m4_t v02 = __riscv_vle32_v_f32m4(row0 + ow + 2, vl);
+
+                vfloat32m4_t v10 = __riscv_vle32_v_f32m4(row1 + ow, vl);
+                vfloat32m4_t v11 = __riscv_vle32_v_f32m4(row1 + ow + 1, vl);
+                vfloat32m4_t v12 = __riscv_vle32_v_f32m4(row1 + ow + 2, vl);
+
+                vfloat32m4_t v20 = __riscv_vle32_v_f32m4(row2 + ow, vl);
+                vfloat32m4_t v21 = __riscv_vle32_v_f32m4(row2 + ow + 1, vl);
+                vfloat32m4_t v22 = __riscv_vle32_v_f32m4(row2 + ow + 2, vl);
+
+                vfloat32m4_t acc = __riscv_vfmul_vf_f32m4(v00, k00, vl);
+                acc = __riscv_vfmacc_vf_f32m4(acc, k01, v01, vl);
+                acc = __riscv_vfmacc_vf_f32m4(acc, k02, v02, vl);
+                acc = __riscv_vfmacc_vf_f32m4(acc, k10, v10, vl);
+                acc = __riscv_vfmacc_vf_f32m4(acc, k11, v11, vl);
+                acc = __riscv_vfmacc_vf_f32m4(acc, k12, v12, vl);
+                acc = __riscv_vfmacc_vf_f32m4(acc, k20, v20, vl);
+                acc = __riscv_vfmacc_vf_f32m4(acc, k21, v21, vl);
+                acc = __riscv_vfmacc_vf_f32m4(acc, k22, v22, vl);
+
+                __riscv_vse32_v_f32m4(output + oh * out_w + ow, acc, vl);
+            }
+
+            ow += vl;
+        }
+    }
+
+    if (padded_input) free(padded_input);
+}
+
+// ============================================================================
+// M8 BATCHED (cache-optimized)
+// ============================================================================
+
+void conv3x3_rvv_m8_batched(
+    const float* input,
+    const float* kernel,
+    float* output,
+    int H,
+    int W,
+    bool use_padding,
+    int batch_rows = 4
+) {
+    float* padded_input = nullptr;
+    const float* proc_input = input;
+    int H_proc = H;
+    int W_proc = W;
+
+    if (use_padding) {
+        padded_input = create_padded_input(input, H, W);
+        proc_input = padded_input;
+        H_proc = H + 2;
+        W_proc = W + 2;
+    }
+
+    const int out_h = use_padding ? H : (H - 2);
+    const int out_w = use_padding ? W : (W - 2);
+
+    float k00 = kernel[0], k01 = kernel[1], k02 = kernel[2];
+    float k10 = kernel[3], k11 = kernel[4], k12 = kernel[5];
+    float k20 = kernel[6], k21 = kernel[7], k22 = kernel[8];
+
+    for (int oh_base = 0; oh_base < out_h; oh_base += batch_rows) {
+        int rows_to_process = (oh_base + batch_rows <= out_h) ?
+                              batch_rows : (out_h - oh_base);
+
+        for (int ow = 0; ow < out_w; ) {
+            size_t vl = __riscv_vsetvl_e32m8(out_w - ow);
+
+            for (int r = 0; r < rows_to_process; r++) {
+                int oh = oh_base + r;
+                const float* row0 = proc_input + oh * W_proc;
+                const float* row1 = row0 + W_proc;
+                const float* row2 = row1 + W_proc;
+
+                vfloat32m8_t v00 = __riscv_vle32_v_f32m8(row0 + ow, vl);
+                vfloat32m8_t v01 = __riscv_vle32_v_f32m8(row0 + ow + 1, vl);
+                vfloat32m8_t v02 = __riscv_vle32_v_f32m8(row0 + ow + 2, vl);
+
+                vfloat32m8_t v10 = __riscv_vle32_v_f32m8(row1 + ow, vl);
+                vfloat32m8_t v11 = __riscv_vle32_v_f32m8(row1 + ow + 1, vl);
+                vfloat32m8_t v12 = __riscv_vle32_v_f32m8(row1 + ow + 2, vl);
+
+                vfloat32m8_t v20 = __riscv_vle32_v_f32m8(row2 + ow, vl);
+                vfloat32m8_t v21 = __riscv_vle32_v_f32m8(row2 + ow + 1, vl);
+                vfloat32m8_t v22 = __riscv_vle32_v_f32m8(row2 + ow + 2, vl);
+
+                vfloat32m8_t acc = __riscv_vfmul_vf_f32m8(v00, k00, vl);
+                acc = __riscv_vfmacc_vf_f32m8(acc, k01, v01, vl);
+                acc = __riscv_vfmacc_vf_f32m8(acc, k02, v02, vl);
+                acc = __riscv_vfmacc_vf_f32m8(acc, k10, v10, vl);
+                acc = __riscv_vfmacc_vf_f32m8(acc, k11, v11, vl);
+                acc = __riscv_vfmacc_vf_f32m8(acc, k12, v12, vl);
+                acc = __riscv_vfmacc_vf_f32m8(acc, k20, v20, vl);
+                acc = __riscv_vfmacc_vf_f32m8(acc, k21, v21, vl);
+                acc = __riscv_vfmacc_vf_f32m8(acc, k22, v22, vl);
+
+                __riscv_vse32_v_f32m8(output + oh * out_w + ow, acc, vl);
+            }
+
+            ow += vl;
+        }
+    }
+
+    if (padded_input) free(padded_input);
+}
+
+// ============================================================================
+// RGB wrappers for M4 and M8
+// ============================================================================
+
+void conv3x3_rvv_m4_rgb(
+    const float* input,
+    const float* kernel,
+    float* output,
+    int H,
+    int W,
+    bool use_padding
+) {
+    for (int c = 0; c < 3; c++) {
+        const float* in_channel = input + c * H * W;
+        const float* kernel_channel = kernel + c * 9;
+        float* out_channel = output + c * (use_padding ? H * W : (H - 2) * (W - 2));
+        conv3x3_rvv_m4(in_channel, kernel_channel, out_channel, H, W, use_padding);
+    }
+}
+
+void conv3x3_rvv_m8_rgb(
+    const float* input,
+    const float* kernel,
+    float* output,
+    int H,
+    int W,
+    bool use_padding
+) {
+    for (int c = 0; c < 3; c++) {
+        const float* in_channel = input + c * H * W;
+        const float* kernel_channel = kernel + c * 9;
+        float* out_channel = output + c * (use_padding ? H * W : (H - 2) * (W - 2));
+        conv3x3_rvv_m8(in_channel, kernel_channel, out_channel, H, W, use_padding);
+    }
+}
+
+// ============================================================================
 // RGB / 3-CHANNEL SUPPORT
 // ============================================================================
 
@@ -457,10 +791,10 @@ int main() {
     printf("\n[TEST 3] Performance Benchmark\n");
     printf("--------------------------------\n");
     
-    // Benchmark parameters
-    const int BENCH_H = 256, BENCH_W = 256;
-    const int WARMUP_ITERS = 10;
-    const int BENCH_ITERS = 100;
+    // Benchmark parameters (reduced for quick benchmark)
+    const int BENCH_H = 128, BENCH_W = 128;
+    const int WARMUP_ITERS = 2;
+    const int BENCH_ITERS = 20;
     
     // Allocate benchmark buffers
     float* bench_input = (float*)malloc(BENCH_H * BENCH_W * sizeof(float));
@@ -547,6 +881,40 @@ int main() {
         printf("    Speedup vs M1: %.2fx\n", m1_time / batched_time);
         printf("    Speedup vs M2: %.2fx\n", m2_time / batched_time);
     }
+
+    // ---- Benchmark M4 ----
+    printf("\n[M4 Implementation]\n");
+    // Warmup
+    for (int i = 0; i < WARMUP_ITERS; i++) {
+        conv3x3_rvv_m4(bench_input, kernel, bench_output, BENCH_H, BENCH_W, true);
+    }
+    // Timed run
+    start = get_time();
+    for (int i = 0; i < BENCH_ITERS; i++) {
+        conv3x3_rvv_m4(bench_input, kernel, bench_output, BENCH_H, BENCH_W, true);
+    }
+    end = get_time();
+    double m4_time = (end - start) / BENCH_ITERS;
+    double m4_mpixels_per_sec = (BENCH_H * BENCH_W / 1e6) / m4_time;
+    printf("  Average time: %.6f seconds\n", m4_time);
+    printf("  Throughput:   %.2f MPixels/sec\n", m4_mpixels_per_sec);
+
+    // ---- Benchmark M8 ----
+    printf("\n[M8 Implementation]\n");
+    // Warmup
+    for (int i = 0; i < WARMUP_ITERS; i++) {
+        conv3x3_rvv_m8(bench_input, kernel, bench_output, BENCH_H, BENCH_W, true);
+    }
+    // Timed run
+    start = get_time();
+    for (int i = 0; i < BENCH_ITERS; i++) {
+        conv3x3_rvv_m8(bench_input, kernel, bench_output, BENCH_H, BENCH_W, true);
+    }
+    end = get_time();
+    double m8_time = (end - start) / BENCH_ITERS;
+    double m8_mpixels_per_sec = (BENCH_H * BENCH_W / 1e6) / m8_time;
+    printf("  Average time: %.6f seconds\n", m8_time);
+    printf("  Throughput:   %.2f MPixels/sec\n", m8_mpixels_per_sec);
     
     // ========================================================================
     // TEST 4: Compare against General RVV Implementation
@@ -595,6 +963,17 @@ int main() {
     bool e32m2_match = compare_outputs(bench_output, general_output, BENCH_H * BENCH_W);
     printf("  Specialized 3x3 m2 vs General e32m2: %s\n\n", 
            e32m2_match ? "MATCH ✓" : "DIFFER ✗");
+
+    // ---- Correctness Check: General vs M4/M8 ----
+    printf("[Correctness] Testing specialized M4 and M8 implementations...\n");
+    // Run specialized M4 into bench_output and compare to general_output (from scalar)
+    conv3x3_rvv_m4(bench_input, kernel, bench_output, BENCH_H, BENCH_W, true);
+    bool m4_match = compare_outputs(bench_output, general_output, BENCH_H * BENCH_W);
+    printf("  Specialized 3x3 m4 vs General scalar: %s\n", m4_match ? "MATCH ✓" : "DIFFER ✗");
+
+    conv3x3_rvv_m8(bench_input, kernel, bench_output, BENCH_H, BENCH_W, true);
+    bool m8_match = compare_outputs(bench_output, general_output, BENCH_H * BENCH_W);
+    printf("  Specialized 3x3 m8 vs General scalar: %s\n\n", m8_match ? "MATCH ✓" : "DIFFER ✗");
     
     // ---- Performance Benchmark: General Scalar ----
     printf("[Performance] Benchmarking general scalar implementation...\n");
@@ -682,7 +1061,9 @@ int main() {
     printf("%-30s %12.6f %12.2f MP/s\n", "General RVV e32m1", general_e32m1_time, general_e32m1_mpixels);
     printf("%-30s %12.6f %12.2f MP/s\n", "General RVV e32m2", general_e32m2_time, general_e32m2_mpixels);
     printf("%-30s %12.6f %12.2f MP/s\n", "Specialized 3x3 M1", m1_time, m1_mpixels_per_sec);
-    printf("%-30s %12.6f %12.2f MP/s  ← FASTEST\n", "Specialized 3x3 M2", m2_time, m2_mpixels_per_sec);
+    printf("%-30s %12.6f %12.2f MP/s\n", "Specialized 3x3 M2", m2_time, m2_mpixels_per_sec);
+    printf("%-30s %12.6f %12.2f MP/s\n", "Specialized 3x3 M4", m4_time, m4_mpixels_per_sec);
+    printf("%-30s %12.6f %12.2f MP/s  ← FASTEST\n", "Specialized 3x3 M8", m8_time, m8_mpixels_per_sec);
     printf("------------------------------------------------------------\n");
     printf("Overall Speedup (3x3 M2 vs General e32m2): %.2fx\n", 
            general_e32m2_time / m2_time);

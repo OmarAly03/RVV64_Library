@@ -4,6 +4,10 @@
 #include <algorithm>
 #include "./include/defs.h"
 
+// Forward declarations for specialized 3x3 implementations (defined in src/conv2d_3x3rvv.cpp)
+void conv3x3_rvv_m4(const float* input, const float* kernel, float* output, int H, int W, bool use_padding);
+void conv3x3_rvv_m8(const float* input, const float* kernel, float* output, int H, int W, bool use_padding);
+
 using namespace std;
 
 // Helper: compute output spatial dims
@@ -106,6 +110,46 @@ int main(int argc, char* argv[]) {
     conv2d_e32m8(input, kernel, out_buf,
                  N, Cin, Cout, H, W, kH, kW, sH, sW, pH, pW);
     write_matrix_binary("./output_files/c_e32m8.bin", out_buf, static_cast<size_t>(out_size));
+
+    // If kernel is 3x3 and stride==1 we can also run the specialized 3x3 variants
+    if (kH == 3 && kW == 3 && sH == 1 && sW == 1) {
+        // Temporary buffer per-call
+        float* temp_out = new float[out_size];
+        // Output buffer for specialized variants
+        float* spec_out = new float[out_size];
+
+        // M4 specialized: accumulate per (out_ch, in_ch) using 3x3 calls
+        memset(spec_out, 0, out_size * sizeof(float));
+        for (int oc = 0; oc < Cout; ++oc) {
+            // For each input channel, compute conv and accumulate
+            for (int ic = 0; ic < Cin; ++ic) {
+                const float* in_chan = input + (ic * H * W);
+                const float* ker_3x3 = kernel + ((oc * Cin + ic) * 9);
+                // call per-channel 3x3 m4
+                conv3x3_rvv_m4(in_chan, ker_3x3, temp_out, H, W, pH > 0 || pW > 0);
+                // accumulate into spec_out at output channel slice
+                float* out_slice = spec_out + (oc * outH * outW);
+                for (int i = 0; i < outH * outW; ++i) out_slice[i] += temp_out[i];
+            }
+        }
+        write_matrix_binary("./output_files/c_3x3_m4.bin", spec_out, static_cast<size_t>(out_size));
+
+        // M8 specialized
+        memset(spec_out, 0, out_size * sizeof(float));
+        for (int oc = 0; oc < Cout; ++oc) {
+            for (int ic = 0; ic < Cin; ++ic) {
+                const float* in_chan = input + (ic * H * W);
+                const float* ker_3x3 = kernel + ((oc * Cin + ic) * 9);
+                conv3x3_rvv_m8(in_chan, ker_3x3, temp_out, H, W, pH > 0 || pW > 0);
+                float* out_slice = spec_out + (oc * outH * outW);
+                for (int i = 0; i < outH * outW; ++i) out_slice[i] += temp_out[i];
+            }
+        }
+        write_matrix_binary("./output_files/c_3x3_m8.bin", spec_out, static_cast<size_t>(out_size));
+
+        delete[] temp_out;
+        delete[] spec_out;
+    }
 
     delete[] input;
     delete[] kernel;

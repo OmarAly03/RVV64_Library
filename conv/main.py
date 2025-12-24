@@ -124,6 +124,17 @@ def run():
     c_e32m2 = load("c_e32m2.bin")
     c_e32m4 = load("c_e32m4.bin")
     c_e32m8 = load("c_e32m8.bin")
+    # Optional specialized 3x3 outputs
+    c_3x3_m4 = None
+    c_3x3_m8 = None
+    try:
+        c_3x3_m4 = load("c_3x3_m4.bin")
+    except Exception:
+        pass
+    try:
+        c_3x3_m8 = load("c_3x3_m8.bin")
+    except Exception:
+        pass
 
     # Results table
     implementations = [
@@ -134,6 +145,11 @@ def run():
         ("C Vectorized (e32m4)", c_e32m4),
         ("C Vectorized (e32m8)", c_e32m8),
     ]
+
+    if c_3x3_m4 is not None:
+        implementations.append(("C Specialized 3x3 M4", c_3x3_m4))
+    if c_3x3_m8 is not None:
+        implementations.append(("C Specialized 3x3 M8", c_3x3_m8))
 
     print(f"\nConv2D: N={N} Cin={Cin} Cout={Cout} HxW={H}x{W} k={kH}x{kW} stride=({sH},{sW}) pad=({pH},{pW})")
     total_ops = 1.0 * N * Cout * outH * outW * Cin * kH * kW * 2
