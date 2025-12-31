@@ -2,7 +2,7 @@ CC = riscv64-unknown-linux-gnu-g++
 FLAGS = -march=rv64gcv -static
 
 # Include directories
-INCLUDES = -Iinclude -I../lib
+INCLUDES = -Iinclude -I../../lib
 
 # --- BiasAdd ---
 SRCS_BIAS_ADD = run_bias_add.cpp src/rvv_bias_add.cpp src/utils.cpp

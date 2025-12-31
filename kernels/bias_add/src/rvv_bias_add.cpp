@@ -1,5 +1,6 @@
 #include <cstddef>
 #include <riscv_vector.h>
+#include "rvv_defs.hpp"
 
 using namespace std;
 
@@ -34,131 +35,131 @@ void bias_add_scalar(const float* input, const float* bias, float* output,
 /********************************* Vectorized Versions *********************************/
 
 void bias_add_e32m1(const float* input, const float* bias, float* output,
-                      size_t batch_size, size_t channels,
-                      size_t height, size_t width) {
-    
-    size_t channel_size = height * width;
-    
-    for (size_t b = 0; b < batch_size; ++b) {
-        for (size_t c = 0; c < channels; ++c) {
-            float b_val = bias[c]; // Scalar bias
-            size_t offset = (b * channels + c) * channel_size;
-            
-            const float* in_ptr = input + offset;
-            float* out_ptr = output + offset;
-            
-            size_t cnt = channel_size;
-            size_t vl;
-            
-            while (cnt > 0) {
-                vl = __riscv_vsetvl_e32m1(cnt);
-                
-                // Load vector from input
-                vfloat32m1_t v_input = __riscv_vle32_v_f32m1(in_ptr, vl);
-                
-                // Add scalar bias value to the vector
-                vfloat32m1_t v_output = __riscv_vfadd_vf_f32m1(v_input, b_val, vl);
-                
-                // Store result in output
-                __riscv_vse32_v_f32m1(out_ptr, v_output, vl);
-                
-                in_ptr += vl;
-                out_ptr += vl;
-                cnt -= vl;
-            }
-        }
-    }
+					  size_t batch_size, size_t channels,
+					  size_t height, size_t width) {
+	
+	size_t channel_size = height * width;
+	
+	for (size_t b = 0; b < batch_size; ++b) {
+		for (size_t c = 0; c < channels; ++c) {
+			float b_val = bias[c]; // Scalar bias
+			size_t offset = (b * channels + c) * channel_size;
+			
+			const float* in_ptr = input + offset;
+			float* out_ptr = output + offset;
+			
+			size_t cnt = channel_size;
+			size_t vl;
+			
+			while (cnt > 0) {
+				vl = SET_VECTOR_LENGTH<float, M1>(cnt);
+				
+				// Load vector from input
+				auto v_input = VECTOR_LOAD<float, M1>(in_ptr, vl);
+				
+				// Add scalar bias value to the vector
+				auto v_output = VECTOR_ADD<float, M1>(v_input, b_val, vl);
+				
+				// Store result in output
+				VECTOR_STORE<float, M1>(out_ptr, v_output, vl);
+				
+				in_ptr += vl;
+				out_ptr += vl;
+				cnt -= vl;
+			}
+		}
+	}
 }
 
 void bias_add_e32m2(const float* input, const float* bias, float* output,
-                      size_t batch_size, size_t channels,
-                      size_t height, size_t width) {
-    
-    size_t channel_size = height * width;
-    
-    for (size_t b = 0; b < batch_size; ++b) {
-        for (size_t c = 0; c < channels; ++c) {
-            float b_val = bias[c];
-            size_t offset = (b * channels + c) * channel_size;
-            
-            const float* in_ptr = input + offset;
-            float* out_ptr = output + offset;
-            
-            size_t cnt = channel_size;
-            size_t vl;
-            
-            while (cnt > 0) {
-                vl = __riscv_vsetvl_e32m2(cnt);
-                vfloat32m2_t v_input = __riscv_vle32_v_f32m2(in_ptr, vl);
-                vfloat32m2_t v_output = __riscv_vfadd_vf_f32m2(v_input, b_val, vl);
-                __riscv_vse32_v_f32m2(out_ptr, v_output, vl);
-                
-                in_ptr += vl;
-                out_ptr += vl;
-                cnt -= vl;
-            }
-        }
-    }
+					  size_t batch_size, size_t channels,
+					  size_t height, size_t width) {
+	
+	size_t channel_size = height * width;
+	
+	for (size_t b = 0; b < batch_size; ++b) {
+		for (size_t c = 0; c < channels; ++c) {
+			float b_val = bias[c];
+			size_t offset = (b * channels + c) * channel_size;
+			
+			const float* in_ptr = input + offset;
+			float* out_ptr = output + offset;
+			
+			size_t cnt = channel_size;
+			size_t vl;
+			
+			while (cnt > 0) {
+				vl = SET_VECTOR_LENGTH<float, M2>(cnt);
+				auto v_input = VECTOR_LOAD<float, M2>(in_ptr, vl);
+				auto v_output = VECTOR_ADD<float, M2>(v_input, b_val, vl);
+				VECTOR_STORE<float, M2>(out_ptr, v_output, vl);
+				
+				in_ptr += vl;
+				out_ptr += vl;
+				cnt -= vl;
+			}
+		}
+	}
 }
 
 void bias_add_e32m4(const float* input, const float* bias, float* output,
-                      size_t batch_size, size_t channels,
-                      size_t height, size_t width) {
-    
-    size_t channel_size = height * width;
-    
-    for (size_t b = 0; b < batch_size; ++b) {
-        for (size_t c = 0; c < channels; ++c) {
-            float b_val = bias[c];
-            size_t offset = (b * channels + c) * channel_size;
-            
-            const float* in_ptr = input + offset;
-            float* out_ptr = output + offset;
-            
-            size_t cnt = channel_size;
-            size_t vl;
-            
-            while (cnt > 0) {
-                vl = __riscv_vsetvl_e32m4(cnt);
-                vfloat32m4_t v_input = __riscv_vle32_v_f32m4(in_ptr, vl);
-                vfloat32m4_t v_output = __riscv_vfadd_vf_f32m4(v_input, b_val, vl);
-                __riscv_vse32_v_f32m4(out_ptr, v_output, vl);
-                
-                in_ptr += vl;
-                out_ptr += vl;
-                cnt -= vl;
-            }
-        }
-    }
+					  size_t batch_size, size_t channels,
+					  size_t height, size_t width) {
+	
+	size_t channel_size = height * width;
+	
+	for (size_t b = 0; b < batch_size; ++b) {
+		for (size_t c = 0; c < channels; ++c) {
+			float b_val = bias[c];
+			size_t offset = (b * channels + c) * channel_size;
+			
+			const float* in_ptr = input + offset;
+			float* out_ptr = output + offset;
+			
+			size_t cnt = channel_size;
+			size_t vl;
+			
+			while (cnt > 0) {
+				vl = SET_VECTOR_LENGTH<float, M4>(cnt);
+				auto v_input = VECTOR_LOAD<float, M4>(in_ptr, vl);
+				auto v_output = VECTOR_ADD<float, M4>(v_input, b_val, vl);
+				VECTOR_STORE<float, M4>(out_ptr, v_output, vl);
+				
+				in_ptr += vl;
+				out_ptr += vl;
+				cnt -= vl;
+			}
+		}
+	}
 }
 
 void bias_add_e32m8(const float* input, const float* bias, float* output,
-                      size_t batch_size, size_t channels,
-                      size_t height, size_t width) {
-    
-    size_t channel_size = height * width;
-    
-    for (size_t b = 0; b < batch_size; ++b) {
-        for (size_t c = 0; c < channels; ++c) {
-            float b_val = bias[c];
-            size_t offset = (b * channels + c) * channel_size;
-            
-            const float* in_ptr = input + offset;
-            float* out_ptr = output + offset;
-            
-            size_t cnt = channel_size;
-            size_t vl;
-            
-            while (cnt > 0) {
-                vl = __riscv_vsetvl_e32m8(cnt);
-                vfloat32m8_t v_input = __riscv_vle32_v_f32m8(in_ptr, vl);
-                vfloat32m8_t v_output = __riscv_vfadd_vf_f32m8(v_input, b_val, vl);
-                __riscv_vse32_v_f32m8(out_ptr, v_output, vl);
-                
-                in_ptr += vl;
-                out_ptr += vl;
-                cnt -= vl;
-            }
-        }
-    }
+					  size_t batch_size, size_t channels,
+					  size_t height, size_t width) {
+	
+	size_t channel_size = height * width;
+	
+	for (size_t b = 0; b < batch_size; ++b) {
+		for (size_t c = 0; c < channels; ++c) {
+			float b_val = bias[c];
+			size_t offset = (b * channels + c) * channel_size;
+			
+			const float* in_ptr = input + offset;
+			float* out_ptr = output + offset;
+			
+			size_t cnt = channel_size;
+			size_t vl;
+			
+			while (cnt > 0) {
+				vl = SET_VECTOR_LENGTH<float, M8>(cnt);
+				auto v_input = VECTOR_LOAD<float, M8>(in_ptr, vl);
+				auto v_output = VECTOR_ADD<float, M8>(v_input, b_val, vl);
+				VECTOR_STORE<float, M8>(out_ptr, v_output, vl);
+				
+				in_ptr += vl;
+				out_ptr += vl;
+				cnt -= vl;
+			}
+		}
+	}
 }
