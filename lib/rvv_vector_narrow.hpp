@@ -173,7 +173,7 @@ inline auto VECTOR_NARROW_SRL_VX(const WideVecType& op1, size_t shift, size_t vl
 }
 
 template<typename T, int LMUL, typename WideVecType, typename ShiftType>
-auto vector_narrow_sra(const WideVecType& op1, const ShiftType& shift, size_t vl) {
+auto VECTOR_NARROW_SRA(const WideVecType& op1, const ShiftType& shift, size_t vl) {
 	if constexpr (std::is_scalar_v<ShiftType>) {
 		return VECTOR_NARROW_SRA_VX<T, LMUL>(op1, shift, vl);
 	} else {
@@ -182,7 +182,7 @@ auto vector_narrow_sra(const WideVecType& op1, const ShiftType& shift, size_t vl
 }
 
 template<typename T, int LMUL, typename WideVecType, typename ShiftType>
-auto vector_narrow_srl(const WideVecType& op1, const ShiftType& shift, size_t vl) {
+auto VECTOR_NARROW_SRL(const WideVecType& op1, const ShiftType& shift, size_t vl) {
 	if constexpr (std::is_scalar_v<ShiftType>) {
 		return VECTOR_NARROW_SRL_VX<T, LMUL>(op1, shift, vl);
 	} else {
