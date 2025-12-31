@@ -4,7 +4,7 @@
 
 using namespace std;
 
-/*********************************** Scalar Version ************************************/
+/*********************************** Scalar ************************************/
 
 void relu_scalar(float* input, float* output, size_t size) {
     for (size_t i = 0; i < size; i++) {
@@ -12,7 +12,7 @@ void relu_scalar(float* input, float* output, size_t size) {
     }
 }
 
-/********************************* Vectorized Versions *********************************/
+/********************************* Vectorized *********************************/
 
 void relu_e32m1(float* input, float* output, size_t size) {
     float* in_ptr = input;
@@ -82,7 +82,7 @@ void relu_e32m8(float* input, float* output, size_t size) {
 	}
 }
 
-/******************************** Tiled Scalar Version *********************************/
+/******************************** Tiled Scalar *********************************/
 
 void relu_tiled_scalar(float* input, float* output, size_t size, size_t TILE_SIZE) {
     size_t tiles = (size + TILE_SIZE - 1) / TILE_SIZE; 
@@ -96,7 +96,7 @@ void relu_tiled_scalar(float* input, float* output, size_t size, size_t TILE_SIZ
     }
 }
 
-/****************************** Tiled Vectorized Versions ******************************/
+/****************************** Tiled Vectorized ******************************/
 
 void relu_tiled_e32m1(float* input, float* output, size_t size, size_t TILE_SIZE) {
     size_t tiles = (size + TILE_SIZE - 1) / TILE_SIZE;

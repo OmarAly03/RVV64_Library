@@ -3,7 +3,7 @@
 #include <cstring>
 #include <riscv_vector.h>
 
-// Scalar implementation
+/*********************************** Scalar ************************************/
 void scatter_elements_scalar(
     const float* data,
     const int64_t* indices,
@@ -41,7 +41,7 @@ void scatter_elements_scalar(
     }
 }
 
-// Vectorized implementation using indexed stores (LMUL=1)
+/********************************* Vectorized *********************************/
 void scatter_elements_e32m1(
     const float* data,
     const int64_t* indices,
@@ -305,11 +305,9 @@ void scatter_elements_e32m8(
 }
 
 
-// ============================================================================
-// TILED IMPLEMENTATIONS
-// ============================================================================
+/******************************** Tiled Scalar *********************************/
 
-// Tiled scalar implementation
+
 void scatter_elements_tiled_scalar(
     const float* data,
     const int64_t* indices,
@@ -366,7 +364,7 @@ void scatter_elements_tiled_scalar(
     }
 }
 
-// Tiled vectorized implementation (LMUL=1)
+/****************************** Tiled Vectorized ******************************/
 void scatter_elements_tiled_e32m1(
     const float* data,
     const int64_t* indices,
@@ -434,7 +432,6 @@ void scatter_elements_tiled_e32m1(
     }
 }
 
-// Tiled vectorized implementation (LMUL=2)
 void scatter_elements_tiled_e32m2(
     const float* data,
     const int64_t* indices,
@@ -502,7 +499,6 @@ void scatter_elements_tiled_e32m2(
     }
 }
 
-// Tiled vectorized implementation (LMUL=4)
 void scatter_elements_tiled_e32m4(
     const float* data,
     const int64_t* indices,

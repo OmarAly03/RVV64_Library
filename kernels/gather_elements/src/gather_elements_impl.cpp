@@ -2,7 +2,7 @@
 #include <cstring>
 #include <riscv_vector.h>
 
-// Scalar implementation
+/*********************************** Scalar ************************************/
 void gather_elements_scalar(
     const float* data,
     const int64_t* indices,
@@ -40,7 +40,7 @@ void gather_elements_scalar(
     }
 }
 
-// Vectorized implementation using indexed loads (LMUL=1)
+/****************************** Vectorized ******************************/
 void gather_elements_e32m1(
     const float* data,
     const int64_t* indices,
@@ -279,7 +279,8 @@ void gather_elements_e32m8(
     }
 }
 
-// Tiled scalar implementation
+/******************************** Tiled Scalar *********************************/
+
 void gather_elements_tiled_scalar(
     const float* data,
     const int64_t* indices,
@@ -331,7 +332,8 @@ void gather_elements_tiled_scalar(
     }
 }
 
-// Tiled vectorized implementation (LMUL=1)
+/****************************** Tiled Vectorized ******************************/
+
 void gather_elements_tiled_e32m1(
     const float* data,
     const int64_t* indices,
