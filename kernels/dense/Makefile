@@ -2,7 +2,7 @@ CC = riscv64-unknown-linux-gnu-g++
 FLAGS = -march=rv64gcv -static
 
 # Include directories
-INCLUDES = -Iinclude -I../lib
+INCLUDES = -Iinclude -I../../lib
 
 # --- Dense (GEMM) ---
 SRCS_DENSE = run_dense.cpp src/rvv_dense.cpp src/utils.cpp

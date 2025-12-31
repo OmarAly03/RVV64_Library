@@ -86,7 +86,7 @@ implementations = [
     ("C Vectorized (e32m1)", load_result("dense_e32m1.bin", output_shape)),
     ("C Vectorized (e32m2)", load_result("dense_e32m2.bin", output_shape)),
     ("C Vectorized (e32m4)", load_result("dense_e32m4.bin", output_shape)),
-    ("C VectorZ Vectorized (e32m8)", load_result("dense_e32m8.bin", output_shape)),
+    ("C Vectorized (e32m8)", load_result("dense_e32m8.bin", output_shape)),
 ]
 
 # ==== Results Table ====

@@ -58,20 +58,20 @@ int main(int argc, char* argv[]) {
     // --- RUN KERNELS ---
 
     /***** Scalar Dense *****/
-    dense_scalar(input, weights, bias, output, B, IN, OUT);
+    dense_scalar(input, weights, bias, output, IN, OUT);
     write_matrix_binary("./output_files/dense_scalar.bin", output, B * OUT);
 
     /***** Dense Vectorized e32mx *****/
-    dense_e32m1(input, weights, bias, output, B, IN, OUT);
+    dense_e32m1(input, weights, bias, output, IN, OUT);
     write_matrix_binary("./output_files/dense_e32m1.bin", output, B * OUT);
 
-    dense_e32m2(input, weights, bias, output, B, IN, OUT);
+    dense_e32m2(input, weights, bias, output, IN, OUT);
     write_matrix_binary("./output_files/dense_e32m2.bin", output, B * OUT);
 
-    dense_e32m4(input, weights, bias, output, B, IN, OUT);
+    dense_e32m4(input, weights, bias, output, IN, OUT);
     write_matrix_binary("./output_files/dense_e32m4.bin", output, B * OUT);
 
-    dense_e32m8(input, weights, bias, output, B, IN, OUT);
+    dense_e32m8(input, weights, bias, output, IN, OUT);
     write_matrix_binary("./output_files/dense_e32m8.bin", output, B * OUT);
 
     // --- CLEANUP ---
