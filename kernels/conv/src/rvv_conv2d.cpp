@@ -8,8 +8,6 @@
 #include "rvv_defs.hpp"
 #include <string.h>
 #include <stddef.h>
-#include "util.h" 
-#include "/home/omar/ara/lib/rvv_defs.hpp"  // For vector intrinsics/macros
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -175,10 +173,10 @@ void conv2d_e32m1(
 
                                 // Reduce sum horizontally
                                 vfloat32m1_t v_zero = VECTOR_BROADCAST<float, M1>(0.0f, 1);
-                                vfloat32m1_t v_sum = __riscv_vfredusum_vs_f32m1_f32m1(v_mult, v_zero, vl);
+                                vfloat32m1_t v_sum = VECTOR_VFREDSUM<float, M1>(v_mult, v_zero, vl);
 
                                 // Extract scalar sum and add to total
-                                sum += __riscv_vfmv_f_s_f32m1_f32(v_sum);
+                                sum += VECTOR_EXTRACT_SCALAR<float, M1>(v_sum);
                             }
                         }
                     }
@@ -262,10 +260,10 @@ void conv2d_e32m2(
 
                                 // Reduce sum horizontally
                                 vfloat32m1_t v_zero = VECTOR_BROADCAST<float, M1>(0.0f, 1);
-                                vfloat32m1_t v_sum = __riscv_vfredusum_vs_f32m2_f32m1(v_mult, v_zero, vl);
+                                vfloat32m1_t v_sum = VECTOR_VFREDSUM<float, M2>(v_mult, v_zero, vl);
 
                                 // Extract scalar sum and add to total
-                                sum += __riscv_vfmv_f_s_f32m1_f32(v_sum);
+                                sum += VECTOR_EXTRACT_SCALAR<float, M1>(v_sum);
                             }
                         }
                     }
@@ -349,10 +347,10 @@ void conv2d_e32m4(
 
                                 // Reduce sum horizontally
                                 vfloat32m1_t v_zero = VECTOR_BROADCAST<float, M1>(0.0f, 1);
-                                vfloat32m1_t v_sum = __riscv_vfredusum_vs_f32m4_f32m1(v_mult, v_zero, vl);
+                                vfloat32m1_t v_sum = VECTOR_VFREDSUM<float, M4>(v_mult, v_zero, vl);
 
                                 // Extract scalar sum and add to total
-                                sum += __riscv_vfmv_f_s_f32m1_f32(v_sum);
+                                sum += VECTOR_EXTRACT_SCALAR<float, M1>(v_sum);
                             }
                         }
                     }
@@ -436,10 +434,10 @@ void conv2d_e32m8(
 
                                 // Reduce sum horizontally
                                 vfloat32m1_t v_zero = VECTOR_BROADCAST<float, M1>(0.0f, 1);
-                                vfloat32m1_t v_sum = __riscv_vfredusum_vs_f32m8_f32m1(v_mult, v_zero, vl);
+                                vfloat32m1_t v_sum = VECTOR_VFREDSUM<float, M8>(v_mult, v_zero, vl);
 
                                 // Extract scalar sum and add to total
-                                sum += __riscv_vfmv_f_s_f32m1_f32(v_sum);
+                                sum += VECTOR_EXTRACT_SCALAR<float, M1>(v_sum);
                             }
                         }
                     }
@@ -538,15 +536,15 @@ void gemm_blocked_e32m8(const float* A, const float* B, float* C,
                     size_t j = 0;
                     size_t current_bn = j_max - j0;
                     while (j < current_bn) {
-                        size_t vl = __riscv_vsetvl_e32m8(current_bn - j);
-                        vfloat32m8_t v_acc = __riscv_vle32_v_f32m8(&c_row_ptr[j], vl);
+                        size_t vl = SET_VECTOR_LENGTH<float, M8>(current_bn - j);
+                        vfloat32m8_t v_acc = VECTOR_LOAD<float, M8>(&c_row_ptr[j], vl);
                         for (int k = k0; k < k_max; ++k) {
                             float a_val = A[i * K + k];
                             const float* b_row_ptr = &B[k * N + j0 + j];
-                            vfloat32m8_t v_b = __riscv_vle32_v_f32m8(b_row_ptr, vl);
-                            v_acc = __riscv_vfmacc_vf_f32m8(v_acc, a_val, v_b, vl);
+                            vfloat32m8_t v_b = VECTOR_LOAD<float, M8>(b_row_ptr, vl);
+                            v_acc = VECTOR_FMACC_VF<float, M8>(v_acc, a_val, v_b, vl);
                         }
-                        __riscv_vse32_v_f32m8(&c_row_ptr[j], v_acc, vl);
+                        VECTOR_STORE<float, M8>(&c_row_ptr[j], v_acc, vl);
                         j += vl;
                     }
                 }
@@ -591,15 +589,15 @@ void im2col_e32m8(const float* data_im, float* data_col,
                         // If the input row is invalid (padding), fill this segment with Zeros
                         // We vectorize the Zero-filling!
                         for (int ow = 0; ow < out_width; ) {
-                            size_t vl = __riscv_vsetvl_e32m8(out_width - ow);
-                            vfloat32m8_t v_zero = __riscv_vfmv_v_f_f32m8(0.0f, vl);
-                            __riscv_vse32_v_f32m8(dest_ptr + ow, v_zero, vl);
+                            size_t vl = SET_VECTOR_LENGTH<float, M8>(out_width - ow);
+                            vfloat32m8_t v_zero = VECTOR_BROADCAST<float, M8>(0.0f, vl);
+                            VECTOR_STORE<float, M8>(dest_ptr + ow, v_zero, vl);
                             ow += vl;
                         }
                     } else {
                         // Valid Row: Vectorize the copy of Output Width (ow)
                         for (int ow = 0; ow < out_width; ) {
-                            size_t vl = __riscv_vsetvl_e32m8(out_width - ow);
+                            size_t vl = SET_VECTOR_LENGTH<float, M8>(out_width - ow);
                             int in_w = ow * stride_w - pad_w + kw;
 
                             // POINTER MATH:
@@ -615,12 +613,12 @@ void im2col_e32m8(const float* data_im, float* data_col,
                             // rigorous version: use vmseq to mask out-of-bound in_w.
                             
                             if (stride_w == 1) {
-                                vfloat32m8_t v_data = __riscv_vle32_v_f32m8(src_ptr, vl);
-                                __riscv_vse32_v_f32m8(dest_ptr + ow, v_data, vl);
+                                vfloat32m8_t v_data = VECTOR_LOAD<float, M8>(src_ptr, vl);
+                                VECTOR_STORE<float, M8>(dest_ptr + ow, v_data, vl);
                             } else {
                                 ptrdiff_t s_stride = stride_w * sizeof(float);
-                                vfloat32m8_t v_data = __riscv_vlse32_v_f32m8(src_ptr, s_stride, vl);
-                                __riscv_vse32_v_f32m8(dest_ptr + ow, v_data, vl);
+                                vfloat32m8_t v_data = VECTOR_STRIDED_LOAD<float, M8>(src_ptr, s_stride, vl);
+                                VECTOR_STORE<float, M8>(dest_ptr + ow, v_data, vl);
                             }
 
                             ow += vl;
@@ -691,10 +689,10 @@ void conv2d_im2col_gemm_vector(
         float* gem_ptr = &gemm_buf[m * N];
         size_t n = 0;
         while (n < N) {
-            vl = __riscv_vsetvl_e32m8(N - n);
-            vfloat32m8_t v_data = __riscv_vle32_v_f32m8(&gem_ptr[n], vl);
-            vfloat32m8_t v_res = __riscv_vfadd_vf_f32m8(v_data, b_val, vl);
-            __riscv_vse32_v_f32m8(&out_ptr[n], v_res, vl);
+            vl = SET_VECTOR_LENGTH<float, M8>(N - n);
+            vfloat32m8_t v_data = VECTOR_LOAD<float, M8>(&gem_ptr[n], vl);
+            vfloat32m8_t v_res = VECTOR_ADD_VX<float, M8>(v_data, b_val, vl);
+            VECTOR_STORE<float, M8>(&out_ptr[n], v_res, vl);
             n += vl;
         }
     }
@@ -745,16 +743,16 @@ void conv2d_im2col_gemm_m8(
         
         size_t n = 0;
         while (n < N) {
-            size_t vl = __riscv_vsetvl_e32m8(N - n);
+            size_t vl = SET_VECTOR_LENGTH<float, M8>(N - n);
             
-            vfloat32m8_t v_data = __riscv_vle32_v_f32m8(&src_ptr[n], vl);
+            vfloat32m8_t v_data = VECTOR_LOAD<float, M8>(&src_ptr[n], vl);
             
             // Only add bias if it exists, otherwise just move data
             if (has_bias) {
-                v_data = __riscv_vfadd_vf_f32m8(v_data, b_val, vl);
+                v_data = VECTOR_ADD<float, M8>(v_data, b_val, vl);
             }
             
-            __riscv_vse32_v_f32m8(&dst_ptr[n], v_data, vl);
+            VECTOR_STORE<float, M8>(&dst_ptr[n], v_data, vl);
             n += vl;
         }
     }
@@ -787,7 +785,7 @@ float* create_padded_input(const float* input, int H, int W) {
 // M1 IMPLEMENTATION
 // ============================================================================
 
-void conv3x3_rvv_m1(
+void conv2d_3x3_m1(
     const float* input,    // Input: HxW
     const float* kernel,   // Kernel: 3x3 (9 elements, row-major)
     float* output,         // Output: HxW (with padding)
@@ -828,46 +826,46 @@ void conv3x3_rvv_m1(
         int ow = 0;
         while (ow < out_w) {
             // Set vector length (m1: LMUL=1, processes ~4 elements on VLEN=128)
-            size_t vl = __riscv_vsetvl_e32m1(out_w - ow);
+            size_t vl = SET_VECTOR_LENGTH<float, M1>(out_w - ow);
             
             // ================================================================
             // LOAD PHASE: Load 9 vectors (3x3 neighborhood)
             // ================================================================
             // Row 0: Load 3 overlapping vectors with offsets 0, 1, 2
-            vfloat32m1_t v00 = __riscv_vle32_v_f32m1(row0 + ow, vl);
-            vfloat32m1_t v01 = __riscv_vle32_v_f32m1(row0 + ow + 1, vl);
-            vfloat32m1_t v02 = __riscv_vle32_v_f32m1(row0 + ow + 2, vl);
+            vfloat32m1_t v00 = VECTOR_LOAD<float, M1>(row0 + ow, vl);
+            vfloat32m1_t v01 = VECTOR_LOAD<float, M1>(row0 + ow + 1, vl);
+            vfloat32m1_t v02 = VECTOR_LOAD<float, M1>(row0 + ow + 2, vl);
             
             // Row 1: Load 3 overlapping vectors
-            vfloat32m1_t v10 = __riscv_vle32_v_f32m1(row1 + ow, vl);
-            vfloat32m1_t v11 = __riscv_vle32_v_f32m1(row1 + ow + 1, vl);
-            vfloat32m1_t v12 = __riscv_vle32_v_f32m1(row1 + ow + 2, vl);
+            vfloat32m1_t v10 = VECTOR_LOAD<float, M1>(row1 + ow, vl);
+            vfloat32m1_t v11 = VECTOR_LOAD<float, M1>(row1 + ow + 1, vl);
+            vfloat32m1_t v12 = VECTOR_LOAD<float, M1>(row1 + ow + 2, vl);
             
             // Row 2: Load 3 overlapping vectors
-            vfloat32m1_t v20 = __riscv_vle32_v_f32m1(row2 + ow, vl);
-            vfloat32m1_t v21 = __riscv_vle32_v_f32m1(row2 + ow + 1, vl);
-            vfloat32m1_t v22 = __riscv_vle32_v_f32m1(row2 + ow + 2, vl);
+            vfloat32m1_t v20 = VECTOR_LOAD<float, M1>(row2 + ow, vl);
+            vfloat32m1_t v21 = VECTOR_LOAD<float, M1>(row2 + ow + 1, vl);
+            vfloat32m1_t v22 = VECTOR_LOAD<float, M1>(row2 + ow + 2, vl);
             
             // ================================================================
             // COMPUTE PHASE: Fused Multiply-Accumulate (FMA) chain
             // ================================================================
             // Start with first multiply
-            vfloat32m1_t acc = __riscv_vfmul_vf_f32m1(v00, k00, vl);
+            vfloat32m1_t acc = VECTOR_MUL<float, M1>(v00, k00, vl);
             
             // Chain the remaining 8 FMAs (vector * scalar + accumulator)
-            acc = __riscv_vfmacc_vf_f32m1(acc, k01, v01, vl);
-            acc = __riscv_vfmacc_vf_f32m1(acc, k02, v02, vl);
-            acc = __riscv_vfmacc_vf_f32m1(acc, k10, v10, vl);
-            acc = __riscv_vfmacc_vf_f32m1(acc, k11, v11, vl);
-            acc = __riscv_vfmacc_vf_f32m1(acc, k12, v12, vl);
-            acc = __riscv_vfmacc_vf_f32m1(acc, k20, v20, vl);
-            acc = __riscv_vfmacc_vf_f32m1(acc, k21, v21, vl);
-            acc = __riscv_vfmacc_vf_f32m1(acc, k22, v22, vl);
+            acc = VECTOR_FMACC<float, M1>(acc, k01, v01, vl);
+            acc = VECTOR_FMACC<float, M1>(acc, k02, v02, vl);
+            acc = VECTOR_FMACC<float, M1>(acc, k10, v10, vl);
+            acc = VECTOR_FMACC<float, M1>(acc, k11, v11, vl);
+            acc = VECTOR_FMACC<float, M1>(acc, k12, v12, vl);
+            acc = VECTOR_FMACC<float, M1>(acc, k20, v20, vl);
+            acc = VECTOR_FMACC<float, M1>(acc, k21, v21, vl);
+            acc = VECTOR_FMACC<float, M1>(acc, k22, v22, vl);
             
             // ================================================================
             // STORE PHASE: Write results
             // ================================================================
-            __riscv_vse32_v_f32m1(out_row + ow, acc, vl);
+            VECTOR_STORE<float, M1>(out_row + ow, acc, vl);
             
             // Move to next vector chunk
             ow += vl;
@@ -884,7 +882,7 @@ void conv3x3_rvv_m1(
 // M2 IMPLEMENTATION 
 // ============================================================================
 
-void conv3x3_rvv_m2(
+void conv2d_3x3_m2(
     const float* input,    // Input: HxW
     const float* kernel,   // Kernel: 3x3 (9 elements, row-major)
     float* output,         // Output: HxW (with padding) or (H-2)x(W-2)
@@ -925,43 +923,43 @@ void conv3x3_rvv_m2(
         int ow = 0;
         while (ow < out_w) {
             // Set vector length (m2: LMUL=2, processes ~8 elements on VLEN=128)
-            size_t vl = __riscv_vsetvl_e32m2(out_w - ow);
+            size_t vl = SET_VECTOR_LENGTH<float, M2>(out_w - ow);
             
             // ================================================================
             // LOAD PHASE: Load 9 vectors with m2
             // ================================================================
             // Row 0: 3 vectors with offsets 0, 1, 2
-            vfloat32m2_t v00 = __riscv_vle32_v_f32m2(row0 + ow, vl);
-            vfloat32m2_t v01 = __riscv_vle32_v_f32m2(row0 + ow + 1, vl);
-            vfloat32m2_t v02 = __riscv_vle32_v_f32m2(row0 + ow + 2, vl);
+            vfloat32m2_t v00 = VECTOR_LOAD<float, M2>(row0 + ow, vl);
+            vfloat32m2_t v01 = VECTOR_LOAD<float, M2>(row0 + ow + 1, vl);
+            vfloat32m2_t v02 = VECTOR_LOAD<float, M2>(row0 + ow + 2, vl);
             
             // Row 1: 3 vectors
-            vfloat32m2_t v10 = __riscv_vle32_v_f32m2(row1 + ow, vl);
-            vfloat32m2_t v11 = __riscv_vle32_v_f32m2(row1 + ow + 1, vl);
-            vfloat32m2_t v12 = __riscv_vle32_v_f32m2(row1 + ow + 2, vl);
+            vfloat32m2_t v10 = VECTOR_LOAD<float, M2>(row1 + ow, vl);
+            vfloat32m2_t v11 = VECTOR_LOAD<float, M2>(row1 + ow + 1, vl);
+            vfloat32m2_t v12 = VECTOR_LOAD<float, M2>(row1 + ow + 2, vl);
             
             // Row 2: 3 vectors
-            vfloat32m2_t v20 = __riscv_vle32_v_f32m2(row2 + ow, vl);
-            vfloat32m2_t v21 = __riscv_vle32_v_f32m2(row2 + ow + 1, vl);
-            vfloat32m2_t v22 = __riscv_vle32_v_f32m2(row2 + ow + 2, vl);
+            vfloat32m2_t v20 = VECTOR_LOAD<float, M2>(row2 + ow, vl);
+            vfloat32m2_t v21 = VECTOR_LOAD<float, M2>(row2 + ow + 1, vl);
+            vfloat32m2_t v22 = VECTOR_LOAD<float, M2>(row2 + ow + 2, vl);
             
             // ================================================================
             // COMPUTE PHASE: FMA chain with m2 vectors
             // ================================================================
-            vfloat32m2_t acc = __riscv_vfmul_vf_f32m2(v00, k00, vl);
-            acc = __riscv_vfmacc_vf_f32m2(acc, k01, v01, vl);
-            acc = __riscv_vfmacc_vf_f32m2(acc, k02, v02, vl);
-            acc = __riscv_vfmacc_vf_f32m2(acc, k10, v10, vl);
-            acc = __riscv_vfmacc_vf_f32m2(acc, k11, v11, vl);
-            acc = __riscv_vfmacc_vf_f32m2(acc, k12, v12, vl);
-            acc = __riscv_vfmacc_vf_f32m2(acc, k20, v20, vl);
-            acc = __riscv_vfmacc_vf_f32m2(acc, k21, v21, vl);
-            acc = __riscv_vfmacc_vf_f32m2(acc, k22, v22, vl);
+            vfloat32m2_t acc = VECTOR_MUL<float, M2>(v00, k00, vl);
+            acc = VECTOR_FMACC<float, M2>(acc, k01, v01, vl);
+            acc = VECTOR_FMACC<float, M2>(acc, k02, v02, vl);
+            acc = VECTOR_FMACC<float, M2>(acc, k10, v10, vl);
+            acc = VECTOR_FMACC<float, M2>(acc, k11, v11, vl);
+            acc = VECTOR_FMACC<float, M2>(acc, k12, v12, vl);
+            acc = VECTOR_FMACC<float, M2>(acc, k20, v20, vl);
+            acc = VECTOR_FMACC<float, M2>(acc, k21, v21, vl);
+            acc = VECTOR_FMACC<float, M2>(acc, k22, v22, vl);
             
             // ================================================================
             // STORE PHASE
             // ================================================================
-            __riscv_vse32_v_f32m2(out_row + ow, acc, vl);
+            VECTOR_STORE<float, M2>(out_row + ow, acc, vl);
             
             ow += vl;
         }
@@ -977,7 +975,7 @@ void conv3x3_rvv_m2(
 // M4 IMPLEMENTATION
 // ============================================================================
 
-void conv3x3_rvv_m4(
+void conv2d_3x3_m4(
     const float* input,    // Input: HxW
     const float* kernel,   // Kernel: 3x3 (9 elements, row-major)
     float* output,         // Output: HxW (with padding) or (H-2)x(W-2)
@@ -1012,31 +1010,31 @@ void conv3x3_rvv_m4(
 
         int ow = 0;
         while (ow < out_w) {
-            size_t vl = __riscv_vsetvl_e32m4(out_w - ow);
+            size_t vl = SET_VECTOR_LENGTH<float, M4>(out_w - ow);
 
-            vfloat32m4_t v00 = __riscv_vle32_v_f32m4(row0 + ow, vl);
-            vfloat32m4_t v01 = __riscv_vle32_v_f32m4(row0 + ow + 1, vl);
-            vfloat32m4_t v02 = __riscv_vle32_v_f32m4(row0 + ow + 2, vl);
+            vfloat32m4_t v00 = VECTOR_LOAD<float, M4>(row0 + ow, vl);
+            vfloat32m4_t v01 = VECTOR_LOAD<float, M4>(row0 + ow + 1, vl);
+            vfloat32m4_t v02 = VECTOR_LOAD<float, M4>(row0 + ow + 2, vl);
 
-            vfloat32m4_t v10 = __riscv_vle32_v_f32m4(row1 + ow, vl);
-            vfloat32m4_t v11 = __riscv_vle32_v_f32m4(row1 + ow + 1, vl);
-            vfloat32m4_t v12 = __riscv_vle32_v_f32m4(row1 + ow + 2, vl);
+            vfloat32m4_t v10 = VECTOR_LOAD<float, M4>(row1 + ow, vl);
+            vfloat32m4_t v11 = VECTOR_LOAD<float, M4>(row1 + ow + 1, vl);
+            vfloat32m4_t v12 = VECTOR_LOAD<float, M4>(row1 + ow + 2, vl);
 
-            vfloat32m4_t v20 = __riscv_vle32_v_f32m4(row2 + ow, vl);
-            vfloat32m4_t v21 = __riscv_vle32_v_f32m4(row2 + ow + 1, vl);
-            vfloat32m4_t v22 = __riscv_vle32_v_f32m4(row2 + ow + 2, vl);
+            vfloat32m4_t v20 = VECTOR_LOAD<float, M4>(row2 + ow, vl);
+            vfloat32m4_t v21 = VECTOR_LOAD<float, M4>(row2 + ow + 1, vl);
+            vfloat32m4_t v22 = VECTOR_LOAD<float, M4>(row2 + ow + 2, vl);
 
-            vfloat32m4_t acc = __riscv_vfmul_vf_f32m4(v00, k00, vl);
-            acc = __riscv_vfmacc_vf_f32m4(acc, k01, v01, vl);
-            acc = __riscv_vfmacc_vf_f32m4(acc, k02, v02, vl);
-            acc = __riscv_vfmacc_vf_f32m4(acc, k10, v10, vl);
-            acc = __riscv_vfmacc_vf_f32m4(acc, k11, v11, vl);
-            acc = __riscv_vfmacc_vf_f32m4(acc, k12, v12, vl);
-            acc = __riscv_vfmacc_vf_f32m4(acc, k20, v20, vl);
-            acc = __riscv_vfmacc_vf_f32m4(acc, k21, v21, vl);
-            acc = __riscv_vfmacc_vf_f32m4(acc, k22, v22, vl);
+            vfloat32m4_t acc = VECTOR_MUL<float, M4>(v00, k00, vl);
+            acc = VECTOR_FMACC<float, M4>(acc, k01, v01, vl);
+            acc = VECTOR_FMACC<float, M4>(acc, k02, v02, vl);
+            acc = VECTOR_FMACC<float, M4>(acc, k10, v10, vl);
+            acc = VECTOR_FMACC<float, M4>(acc, k11, v11, vl);
+            acc = VECTOR_FMACC<float, M4>(acc, k12, v12, vl);
+            acc = VECTOR_FMACC<float, M4>(acc, k20, v20, vl);
+            acc = VECTOR_FMACC<float, M4>(acc, k21, v21, vl);
+            acc = VECTOR_FMACC<float, M4>(acc, k22, v22, vl);
 
-            __riscv_vse32_v_f32m4(out_row + ow, acc, vl);
+            VECTOR_STORE<float, M4>(out_row + ow, acc, vl);
 
             ow += vl;
         }
@@ -1049,7 +1047,7 @@ void conv3x3_rvv_m4(
 // M8 IMPLEMENTATION 
 // ============================================================================
 
-void conv3x3_rvv_m8(
+void conv2d_3x3_m8(
     const float* input,
     const float* kernel,
     float* output,
@@ -1084,31 +1082,31 @@ void conv3x3_rvv_m8(
 
         int ow = 0;
         while (ow < out_w) {
-            size_t vl = __riscv_vsetvl_e32m8(out_w - ow);
+            size_t vl = SET_VECTOR_LENGTH<float, M8>(out_w - ow);
 
-            vfloat32m8_t v00 = __riscv_vle32_v_f32m8(row0 + ow, vl);
-            vfloat32m8_t v01 = __riscv_vle32_v_f32m8(row0 + ow + 1, vl);
-            vfloat32m8_t v02 = __riscv_vle32_v_f32m8(row0 + ow + 2, vl);
+            vfloat32m8_t v00 = VECTOR_LOAD<float, M8>(row0 + ow, vl);
+            vfloat32m8_t v01 = VECTOR_LOAD<float, M8>(row0 + ow + 1, vl);
+            vfloat32m8_t v02 = VECTOR_LOAD<float, M8>(row0 + ow + 2, vl);
 
-            vfloat32m8_t v10 = __riscv_vle32_v_f32m8(row1 + ow, vl);
-            vfloat32m8_t v11 = __riscv_vle32_v_f32m8(row1 + ow + 1, vl);
-            vfloat32m8_t v12 = __riscv_vle32_v_f32m8(row1 + ow + 2, vl);
+            vfloat32m8_t v10 = VECTOR_LOAD<float, M8>(row1 + ow, vl);
+            vfloat32m8_t v11 = VECTOR_LOAD<float, M8>(row1 + ow + 1, vl);
+            vfloat32m8_t v12 = VECTOR_LOAD<float, M8>(row1 + ow + 2, vl);
 
-            vfloat32m8_t v20 = __riscv_vle32_v_f32m8(row2 + ow, vl);
-            vfloat32m8_t v21 = __riscv_vle32_v_f32m8(row2 + ow + 1, vl);
-            vfloat32m8_t v22 = __riscv_vle32_v_f32m8(row2 + ow + 2, vl);
+            vfloat32m8_t v20 = VECTOR_LOAD<float, M8>(row2 + ow, vl);
+            vfloat32m8_t v21 = VECTOR_LOAD<float, M8>(row2 + ow + 1, vl);
+            vfloat32m8_t v22 = VECTOR_LOAD<float, M8>(row2 + ow + 2, vl);
 
-            vfloat32m8_t acc = __riscv_vfmul_vf_f32m8(v00, k00, vl);
-            acc = __riscv_vfmacc_vf_f32m8(acc, k01, v01, vl);
-            acc = __riscv_vfmacc_vf_f32m8(acc, k02, v02, vl);
-            acc = __riscv_vfmacc_vf_f32m8(acc, k10, v10, vl);
-            acc = __riscv_vfmacc_vf_f32m8(acc, k11, v11, vl);
-            acc = __riscv_vfmacc_vf_f32m8(acc, k12, v12, vl);
-            acc = __riscv_vfmacc_vf_f32m8(acc, k20, v20, vl);
-            acc = __riscv_vfmacc_vf_f32m8(acc, k21, v21, vl);
-            acc = __riscv_vfmacc_vf_f32m8(acc, k22, v22, vl);
+            vfloat32m8_t acc = VECTOR_MUL<float, M8>(v00, k00, vl);
+            acc = VECTOR_FMACC<float, M8>(acc, k01, v01, vl);
+            acc = VECTOR_FMACC<float, M8>(acc, k02, v02, vl);
+            acc = VECTOR_FMACC<float, M8>(acc, k10, v10, vl);
+            acc = VECTOR_FMACC<float, M8>(acc, k11, v11, vl);
+            acc = VECTOR_FMACC<float, M8>(acc, k12, v12, vl);
+            acc = VECTOR_FMACC<float, M8>(acc, k20, v20, vl);
+            acc = VECTOR_FMACC<float, M8>(acc, k21, v21, vl);
+            acc = VECTOR_FMACC<float, M8>(acc, k22, v22, vl);
 
-            __riscv_vse32_v_f32m8(out_row + ow, acc, vl);
+            VECTOR_STORE<float, M8>(out_row + ow, acc, vl);
 
             ow += vl;
         }
@@ -1124,7 +1122,7 @@ void conv3x3_rvv_m8(
 // MULTI-ROW BATCHED M2 ( for edge devices)
 // ============================================================================
 
-void conv3x3_rvv_m2_batched(
+void conv2d_3x3_m2_batched(
     const float* input,
     const float* kernel,
     float* output,
@@ -1159,7 +1157,7 @@ void conv3x3_rvv_m2_batched(
         
         // For each column position (vectorized)
         for (int ow = 0; ow < out_w; ) {
-            size_t vl = __riscv_vsetvl_e32m2(out_w - ow);
+            size_t vl = SET_VECTOR_LENGTH<float, M2>(out_w - ow);
             
             // Process each row in the current batch
             for (int r = 0; r < rows_to_process; r++) {
@@ -1169,31 +1167,31 @@ void conv3x3_rvv_m2_batched(
                 const float* row2 = row1 + W_proc;
                 
                 // Load 9 vectors
-                vfloat32m2_t v00 = __riscv_vle32_v_f32m2(row0 + ow, vl);
-                vfloat32m2_t v01 = __riscv_vle32_v_f32m2(row0 + ow + 1, vl);
-                vfloat32m2_t v02 = __riscv_vle32_v_f32m2(row0 + ow + 2, vl);
+                vfloat32m2_t v00 = VECTOR_LOAD<float, M2>(row0 + ow, vl);
+                vfloat32m2_t v01 = VECTOR_LOAD<float, M2>(row0 + ow + 1, vl);
+                vfloat32m2_t v02 = VECTOR_LOAD<float, M2>(row0 + ow + 2, vl);
                 
-                vfloat32m2_t v10 = __riscv_vle32_v_f32m2(row1 + ow, vl);
-                vfloat32m2_t v11 = __riscv_vle32_v_f32m2(row1 + ow + 1, vl);
-                vfloat32m2_t v12 = __riscv_vle32_v_f32m2(row1 + ow + 2, vl);
+                vfloat32m2_t v10 = VECTOR_LOAD<float, M2>(row1 + ow, vl);
+                vfloat32m2_t v11 = VECTOR_LOAD<float, M2>(row1 + ow + 1, vl);
+                vfloat32m2_t v12 = VECTOR_LOAD<float, M2>(row1 + ow + 2, vl);
                 
-                vfloat32m2_t v20 = __riscv_vle32_v_f32m2(row2 + ow, vl);
-                vfloat32m2_t v21 = __riscv_vle32_v_f32m2(row2 + ow + 1, vl);
-                vfloat32m2_t v22 = __riscv_vle32_v_f32m2(row2 + ow + 2, vl);
+                vfloat32m2_t v20 = VECTOR_LOAD<float, M2>(row2 + ow, vl);
+                vfloat32m2_t v21 = VECTOR_LOAD<float, M2>(row2 + ow + 1, vl);
+                vfloat32m2_t v22 = VECTOR_LOAD<float, M2>(row2 + ow + 2, vl);
                 
                 // Compute
-                vfloat32m2_t acc = __riscv_vfmul_vf_f32m2(v00, k00, vl);
-                acc = __riscv_vfmacc_vf_f32m2(acc, k01, v01, vl);
-                acc = __riscv_vfmacc_vf_f32m2(acc, k02, v02, vl);
-                acc = __riscv_vfmacc_vf_f32m2(acc, k10, v10, vl);
-                acc = __riscv_vfmacc_vf_f32m2(acc, k11, v11, vl);
-                acc = __riscv_vfmacc_vf_f32m2(acc, k12, v12, vl);
-                acc = __riscv_vfmacc_vf_f32m2(acc, k20, v20, vl);
-                acc = __riscv_vfmacc_vf_f32m2(acc, k21, v21, vl);
-                acc = __riscv_vfmacc_vf_f32m2(acc, k22, v22, vl);
+                vfloat32m2_t acc = VECTOR_MUL<float, M2>(v00, k00, vl);
+                acc = VECTOR_FMACC<float, M2>(acc, k01, v01, vl);
+                acc = VECTOR_FMACC<float, M2>(acc, k02, v02, vl);
+                acc = VECTOR_FMACC<float, M2>(acc, k10, v10, vl);
+                acc = VECTOR_FMACC<float, M2>(acc, k11, v11, vl);
+                acc = VECTOR_FMACC<float, M2>(acc, k12, v12, vl);
+                acc = VECTOR_FMACC<float, M2>(acc, k20, v20, vl);
+                acc = VECTOR_FMACC<float, M2>(acc, k21, v21, vl);
+                acc = VECTOR_FMACC<float, M2>(acc, k22, v22, vl);
                 
                 // Store
-                __riscv_vse32_v_f32m2(output + oh * out_w + ow, acc, vl);
+                VECTOR_STORE<float, M2>(output + oh * out_w + ow, acc, vl);
             }
             
             ow += vl;
@@ -1209,7 +1207,7 @@ void conv3x3_rvv_m2_batched(
 // M4 BATCHED
 // ============================================================================
 
-void conv3x3_rvv_m4_batched(
+void conv2d_3x3_m4_batched(
     const float* input,
     const float* kernel,
     float* output,
@@ -1242,7 +1240,7 @@ void conv3x3_rvv_m4_batched(
                               batch_rows : (out_h - oh_base);
 
         for (int ow = 0; ow < out_w; ) {
-            size_t vl = __riscv_vsetvl_e32m4(out_w - ow);
+            size_t vl = SET_VECTOR_LENGTH<float, M4>(out_w - ow);
 
             for (int r = 0; r < rows_to_process; r++) {
                 int oh = oh_base + r;
@@ -1250,29 +1248,29 @@ void conv3x3_rvv_m4_batched(
                 const float* row1 = row0 + W_proc;
                 const float* row2 = row1 + W_proc;
 
-                vfloat32m4_t v00 = __riscv_vle32_v_f32m4(row0 + ow, vl);
-                vfloat32m4_t v01 = __riscv_vle32_v_f32m4(row0 + ow + 1, vl);
-                vfloat32m4_t v02 = __riscv_vle32_v_f32m4(row0 + ow + 2, vl);
+                vfloat32m4_t v00 = VECTOR_LOAD<float, M4>(row0 + ow, vl);
+                vfloat32m4_t v01 = VECTOR_LOAD<float, M4>(row0 + ow + 1, vl);
+                vfloat32m4_t v02 = VECTOR_LOAD<float, M4>(row0 + ow + 2, vl);
 
-                vfloat32m4_t v10 = __riscv_vle32_v_f32m4(row1 + ow, vl);
-                vfloat32m4_t v11 = __riscv_vle32_v_f32m4(row1 + ow + 1, vl);
-                vfloat32m4_t v12 = __riscv_vle32_v_f32m4(row1 + ow + 2, vl);
+                vfloat32m4_t v10 = VECTOR_LOAD<float, M4>(row1 + ow, vl);
+                vfloat32m4_t v11 = VECTOR_LOAD<float, M4>(row1 + ow + 1, vl);
+                vfloat32m4_t v12 = VECTOR_LOAD<float, M4>(row1 + ow + 2, vl);
 
-                vfloat32m4_t v20 = __riscv_vle32_v_f32m4(row2 + ow, vl);
-                vfloat32m4_t v21 = __riscv_vle32_v_f32m4(row2 + ow + 1, vl);
-                vfloat32m4_t v22 = __riscv_vle32_v_f32m4(row2 + ow + 2, vl);
+                vfloat32m4_t v20 = VECTOR_LOAD<float, M4>(row2 + ow, vl);
+                vfloat32m4_t v21 = VECTOR_LOAD<float, M4>(row2 + ow + 1, vl);
+                vfloat32m4_t v22 = VECTOR_LOAD<float, M4>(row2 + ow + 2, vl);
 
-                vfloat32m4_t acc = __riscv_vfmul_vf_f32m4(v00, k00, vl);
-                acc = __riscv_vfmacc_vf_f32m4(acc, k01, v01, vl);
-                acc = __riscv_vfmacc_vf_f32m4(acc, k02, v02, vl);
-                acc = __riscv_vfmacc_vf_f32m4(acc, k10, v10, vl);
-                acc = __riscv_vfmacc_vf_f32m4(acc, k11, v11, vl);
-                acc = __riscv_vfmacc_vf_f32m4(acc, k12, v12, vl);
-                acc = __riscv_vfmacc_vf_f32m4(acc, k20, v20, vl);
-                acc = __riscv_vfmacc_vf_f32m4(acc, k21, v21, vl);
-                acc = __riscv_vfmacc_vf_f32m4(acc, k22, v22, vl);
+                vfloat32m4_t acc = VECTOR_MUL<float, M4>(v00, k00, vl);
+                acc = VECTOR_FMACC<float, M4>(acc, k01, v01, vl);
+                acc = VECTOR_FMACC<float, M4>(acc, k02, v02, vl);
+                acc = VECTOR_FMACC<float, M4>(acc, k10, v10, vl);
+                acc = VECTOR_FMACC<float, M4>(acc, k11, v11, vl);
+                acc = VECTOR_FMACC<float, M4>(acc, k12, v12, vl);
+                acc = VECTOR_FMACC<float, M4>(acc, k20, v20, vl);
+                acc = VECTOR_FMACC<float, M4>(acc, k21, v21, vl);
+                acc = VECTOR_FMACC<float, M4>(acc, k22, v22, vl);
 
-                __riscv_vse32_v_f32m4(output + oh * out_w + ow, acc, vl);
+                VECTOR_STORE<float, M4>(output + oh * out_w + ow, acc, vl);
             }
 
             ow += vl;
@@ -1286,7 +1284,7 @@ void conv3x3_rvv_m4_batched(
 // M8 BATCHED
 // ============================================================================
 
-void conv3x3_rvv_m8_batched(
+void conv2d_3x3_m8_batched(
     const float* input,
     const float* kernel,
     float* output,
@@ -1319,7 +1317,7 @@ void conv3x3_rvv_m8_batched(
                               batch_rows : (out_h - oh_base);
 
         for (int ow = 0; ow < out_w; ) {
-            size_t vl = __riscv_vsetvl_e32m8(out_w - ow);
+            size_t vl = SET_VECTOR_LENGTH<float, M8>(out_w - ow);
 
             for (int r = 0; r < rows_to_process; r++) {
                 int oh = oh_base + r;
@@ -1327,29 +1325,29 @@ void conv3x3_rvv_m8_batched(
                 const float* row1 = row0 + W_proc;
                 const float* row2 = row1 + W_proc;
 
-                vfloat32m8_t v00 = __riscv_vle32_v_f32m8(row0 + ow, vl);
-                vfloat32m8_t v01 = __riscv_vle32_v_f32m8(row0 + ow + 1, vl);
-                vfloat32m8_t v02 = __riscv_vle32_v_f32m8(row0 + ow + 2, vl);
+                vfloat32m8_t v00 = VECTOR_LOAD<float, M8>(row0 + ow, vl);
+                vfloat32m8_t v01 = VECTOR_LOAD<float, M8>(row0 + ow + 1, vl);
+                vfloat32m8_t v02 = VECTOR_LOAD<float, M8>(row0 + ow + 2, vl);
 
-                vfloat32m8_t v10 = __riscv_vle32_v_f32m8(row1 + ow, vl);
-                vfloat32m8_t v11 = __riscv_vle32_v_f32m8(row1 + ow + 1, vl);
-                vfloat32m8_t v12 = __riscv_vle32_v_f32m8(row1 + ow + 2, vl);
+                vfloat32m8_t v10 = VECTOR_LOAD<float, M8>(row1 + ow, vl);
+                vfloat32m8_t v11 = VECTOR_LOAD<float, M8>(row1 + ow + 1, vl);
+                vfloat32m8_t v12 = VECTOR_LOAD<float, M8>(row1 + ow + 2, vl);
 
-                vfloat32m8_t v20 = __riscv_vle32_v_f32m8(row2 + ow, vl);
-                vfloat32m8_t v21 = __riscv_vle32_v_f32m8(row2 + ow + 1, vl);
-                vfloat32m8_t v22 = __riscv_vle32_v_f32m8(row2 + ow + 2, vl);
+                vfloat32m8_t v20 = VECTOR_LOAD<float, M8>(row2 + ow, vl);
+                vfloat32m8_t v21 = VECTOR_LOAD<float, M8>(row2 + ow + 1, vl);
+                vfloat32m8_t v22 = VECTOR_LOAD<float, M8>(row2 + ow + 2, vl);
 
-                vfloat32m8_t acc = __riscv_vfmul_vf_f32m8(v00, k00, vl);
-                acc = __riscv_vfmacc_vf_f32m8(acc, k01, v01, vl);
-                acc = __riscv_vfmacc_vf_f32m8(acc, k02, v02, vl);
-                acc = __riscv_vfmacc_vf_f32m8(acc, k10, v10, vl);
-                acc = __riscv_vfmacc_vf_f32m8(acc, k11, v11, vl);
-                acc = __riscv_vfmacc_vf_f32m8(acc, k12, v12, vl);
-                acc = __riscv_vfmacc_vf_f32m8(acc, k20, v20, vl);
-                acc = __riscv_vfmacc_vf_f32m8(acc, k21, v21, vl);
-                acc = __riscv_vfmacc_vf_f32m8(acc, k22, v22, vl);
+                vfloat32m8_t acc = VECTOR_MUL<float, M8>(v00, k00, vl);
+                acc = VECTOR_FMACC<float, M8>(acc, k01, v01, vl);
+                acc = VECTOR_FMACC<float, M8>(acc, k02, v02, vl);
+                acc = VECTOR_FMACC<float, M8>(acc, k10, v10, vl);
+                acc = VECTOR_FMACC<float, M8>(acc, k11, v11, vl);
+                acc = VECTOR_FMACC<float, M8>(acc, k12, v12, vl);
+                acc = VECTOR_FMACC<float, M8>(acc, k20, v20, vl);
+                acc = VECTOR_FMACC<float, M8>(acc, k21, v21, vl);
+                acc = VECTOR_FMACC<float, M8>(acc, k22, v22, vl);
 
-                __riscv_vse32_v_f32m8(output + oh * out_w + ow, acc, vl);
+                VECTOR_STORE<float, M8>(output + oh * out_w + ow, acc, vl);
             }
 
             ow += vl;
@@ -1361,7 +1359,7 @@ void conv3x3_rvv_m8_batched(
 
 /********************************* 3x3 Filter-Specific RGB Vectorized Versions *********************************/
 
-void conv3x3_rvv_m2_rgb(
+void conv2d_3x3_m2_rgb(
     const float* input,     // Input: 3xHxW (channel-major layout)
     const float* kernel,    // Kernel: 3x3x3 (27 elements: R, G, B kernels)
     float* output,          // Output: 3xHxW
@@ -1378,11 +1376,11 @@ void conv3x3_rvv_m2_rgb(
         const float* kernel_channel = kernel + c * 9;
         float* out_channel = output + c * out_h * out_w;
         
-        conv3x3_rvv_m2(in_channel, kernel_channel, out_channel, H, W, use_padding);
+        conv2d_3x3_m2(in_channel, kernel_channel, out_channel, H, W, use_padding);
     }
 }
 
-void conv3x3_rvv_m4_rgb(
+void conv2d_3x3_m4_rgb(
     const float* input,
     const float* kernel,
     float* output,
@@ -1394,11 +1392,11 @@ void conv3x3_rvv_m4_rgb(
         const float* in_channel = input + c * H * W;
         const float* kernel_channel = kernel + c * 9;
         float* out_channel = output + c * (use_padding ? H * W : (H - 2) * (W - 2));
-        conv3x3_rvv_m4(in_channel, kernel_channel, out_channel, H, W, use_padding);
+        conv2d_3x3_m4(in_channel, kernel_channel, out_channel, H, W, use_padding);
     }
 }
 
-void conv3x3_rvv_m8_rgb(
+void conv2d_3x3_m8_rgb(
     const float* input,
     const float* kernel,
     float* output,
@@ -1410,7 +1408,7 @@ void conv3x3_rvv_m8_rgb(
         const float* in_channel = input + c * H * W;
         const float* kernel_channel = kernel + c * 9;
         float* out_channel = output + c * (use_padding ? H * W : (H - 2) * (W - 2));
-        conv3x3_rvv_m8(in_channel, kernel_channel, out_channel, H, W, use_padding);
+        conv2d_3x3_m8(in_channel, kernel_channel, out_channel, H, W, use_padding);
     }
 }
 

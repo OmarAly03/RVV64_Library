@@ -90,45 +90,45 @@ void conv2d_im2col_gemm_m8(
     int has_bias);
 
 // 3x3 specialized RVV functions
-void conv3x3_rvv_m1(
+void conv2d_3x3_m1(
     const float* input, const float* kernel, float* output,
     int H, int W, bool use_padding);
 
-void conv3x3_rvv_m2(
+void conv2d_3x3_m2(
     const float* input, const float* kernel, float* output,
     int H, int W, bool use_padding);
 
-void conv3x3_rvv_m4(
+void conv2d_3x3_m4(
     const float* input, const float* kernel, float* output,
     int H, int W, bool use_padding);
 
-void conv3x3_rvv_m8(
+void conv2d_3x3_m8(
     const float* input, const float* kernel, float* output,
     int H, int W, bool use_padding);
 
 // Batched versions
-void conv3x3_rvv_m2_batched(
+void conv2d_3x3_m2_batched(
     const float* input, const float* kernel, float* output,
     int H, int W, bool use_padding, int batch_rows);
 
-void conv3x3_rvv_m4_batched(
+void conv2d_3x3_m4_batched(
     const float* input, const float* kernel, float* output,
     int H, int W, bool use_padding, int batch_rows);
 
-void conv3x3_rvv_m8_batched(
+void conv2d_3x3_m8_batched(
     const float* input, const float* kernel, float* output,
     int H, int W, bool use_padding, int batch_rows);
 
 // RGB versions
-void conv3x3_rvv_m2_rgb(
+void conv2d_3x3_m2_rgb(
     const float* input, const float* kernel, float* output,
     int H, int W, bool use_padding);
 
-void conv3x3_rvv_m4_rgb(
+void conv2d_3x3_m4_rgb(
     const float* input, const float* kernel, float* output,
     int H, int W, bool use_padding);
 
-void conv3x3_rvv_m8_rgb(
+void conv2d_3x3_m8_rgb(
     const float* input, const float* kernel, float* output,
     int H, int W, bool use_padding);
 
