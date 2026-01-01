@@ -4,11 +4,11 @@ HOST_CC = g++
 HOST_FLAGS = -O2
 
 # Include directories
-INCLUDES = -Iinclude -I../lib
+INCLUDES = -Iinclude -I../../lib
 
 # Source files
-SRCS = run_conv_transpose.cpp src/rvv_conv_transpose.cpp src/conv_transpose_scalar.cpp src/utils.cpp
-HOST_SRCS = run_conv_transpose.cpp src/conv_transpose_scalar.cpp src/utils.cpp
+SRCS = run_conv_transpose.cpp src/rvv_conv2d_transpose.cpp src/utils.cpp
+HOST_SRCS = run_conv_transpose.cpp src/utils.cpp
 
 # Output binary
 TARGET = ./output_files/run_conv_transpose

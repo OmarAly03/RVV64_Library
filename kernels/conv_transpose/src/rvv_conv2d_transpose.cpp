@@ -1,12 +1,12 @@
 #include <cstring>
 #include <cstdint>
 #include "defs.h"
-#include "../../lib/rvv_defs.hpp"
+#include "rvv_defs.hpp"
 #include <riscv_vector.h>
 
 
 /*********************************** Scalar Version ************************************/
-void conv_transpose_2d_scalar(
+void conv2d_transpose_scalar(
     const float* input, const float* kernel, float* output,
     int batch_size, int in_channels, int out_channels,
     int input_h, int input_w, int kernel_h, int kernel_w,
@@ -58,7 +58,7 @@ void conv_transpose_2d_scalar(
 /********************************* Vectorized Versions *********************************/
 
 // RVV optimized version (e32m1)
-void conv_transpose_2d_e32m1(
+void conv2d_transpose_e32m1(
     const float* input, const float* kernel, float* output,
     int batch_size, int in_channels, int out_channels,
     int input_h, int input_w, int kernel_h, int kernel_w,
@@ -100,21 +100,21 @@ void conv_transpose_2d_e32m1(
                                 
                                 if (processable <= 0) break;
                                 
-                                vl = __riscv_vsetvl_e32m1(processable);
+                                vl = SET_VECTOR_LENGTH<float, M1>(processable);
                                 
-                                vfloat32m1_t v_kernel = __riscv_vle32_v_f32m1(
+                                vfloat32m1_t v_kernel = VECTOR_LOAD<float, M1>(
                                     &kernel[ic * out_channels * kernel_h * kernel_w +
                                            oc * kernel_h * kernel_w +
                                            kh * kernel_w + kw], vl);
                                 
-                                vfloat32m1_t v_output = __riscv_vle32_v_f32m1(
+                                vfloat32m1_t v_output = VECTOR_LOAD<float, M1>(
                                     &output[b * out_channels * out_height * out_width +
                                            oc * out_height * out_width +
                                            out_h_idx * out_width + out_w_idx + kw], vl);
                                 
-                                v_output = __riscv_vfmacc_vf_f32m1(v_output, input_val, v_kernel, vl);
+                                v_output = VECTOR_FMACC_VF<float, M1>(v_output, input_val, v_kernel, vl);
                                 
-                                __riscv_vse32_v_f32m1(
+                                VECTOR_STORE<float, M1>(
                                     &output[b * out_channels * out_height * out_width +
                                            oc * out_height * out_width +
                                            out_h_idx * out_width + out_w_idx + kw], v_output, vl);
@@ -128,7 +128,7 @@ void conv_transpose_2d_e32m1(
 }
 
 // RVV optimized version (e32m2)
-void conv_transpose_2d_e32m2(
+void conv2d_transpose_e32m2(
     const float* input, const float* kernel, float* output,
     int batch_size, int in_channels, int out_channels,
     int input_h, int input_w, int kernel_h, int kernel_w,
@@ -170,21 +170,21 @@ void conv_transpose_2d_e32m2(
                                 
                                 if (processable <= 0) break;
                                 
-                                vl = __riscv_vsetvl_e32m2(processable);
+                                vl = SET_VECTOR_LENGTH<float, M2>(processable);
                                 
-                                vfloat32m2_t v_kernel = __riscv_vle32_v_f32m2(
+                                vfloat32m2_t v_kernel = VECTOR_LOAD<float, M2>(
                                     &kernel[ic * out_channels * kernel_h * kernel_w +
                                            oc * kernel_h * kernel_w +
                                            kh * kernel_w + kw], vl);
                                 
-                                vfloat32m2_t v_output = __riscv_vle32_v_f32m2(
+                                vfloat32m2_t v_output = VECTOR_LOAD<float, M2>(
                                     &output[b * out_channels * out_height * out_width +
                                            oc * out_height * out_width +
                                            out_h_idx * out_width + out_w_idx + kw], vl);
                                 
-                                v_output = __riscv_vfmacc_vf_f32m2(v_output, input_val, v_kernel, vl);
+                                v_output = VECTOR_FMACC_VF<float, M2>(v_output, input_val, v_kernel, vl);
                                 
-                                __riscv_vse32_v_f32m2(
+                                VECTOR_STORE<float, M2>(
                                     &output[b * out_channels * out_height * out_width +
                                            oc * out_height * out_width +
                                            out_h_idx * out_width + out_w_idx + kw], v_output, vl);
@@ -198,7 +198,7 @@ void conv_transpose_2d_e32m2(
 }
 
 // RVV optimized version (e32m4)
-void conv_transpose_2d_e32m4(
+void conv2d_transpose_e32m4(
     const float* input, const float* kernel, float* output,
     int batch_size, int in_channels, int out_channels,
     int input_h, int input_w, int kernel_h, int kernel_w,
@@ -240,21 +240,21 @@ void conv_transpose_2d_e32m4(
                                 
                                 if (processable <= 0) break;
                                 
-                                vl = __riscv_vsetvl_e32m4(processable);
+                                vl = SET_VECTOR_LENGTH<float, M4>(processable);
                                 
-                                vfloat32m4_t v_kernel = __riscv_vle32_v_f32m4(
+                                vfloat32m4_t v_kernel = VECTOR_LOAD<float, M4>(
                                     &kernel[ic * out_channels * kernel_h * kernel_w +
                                            oc * kernel_h * kernel_w +
                                            kh * kernel_w + kw], vl);
                                 
-                                vfloat32m4_t v_output = __riscv_vle32_v_f32m4(
+                                vfloat32m4_t v_output = VECTOR_LOAD<float, M4>(
                                     &output[b * out_channels * out_height * out_width +
                                            oc * out_height * out_width +
                                            out_h_idx * out_width + out_w_idx + kw], vl);
                                 
-                                v_output = __riscv_vfmacc_vf_f32m4(v_output, input_val, v_kernel, vl);
+                                v_output = VECTOR_FMACC_VF<float, M4>(v_output, input_val, v_kernel, vl);
                                 
-                                __riscv_vse32_v_f32m4(
+                                VECTOR_STORE<float, M4>(
                                     &output[b * out_channels * out_height * out_width +
                                            oc * out_height * out_width +
                                            out_h_idx * out_width + out_w_idx + kw], v_output, vl);
@@ -268,7 +268,7 @@ void conv_transpose_2d_e32m4(
 }
 
 // RVV optimized version (e32m8)
-void conv_transpose_2d_e32m8(
+void conv2d_transpose_e32m8(
     const float* input, const float* kernel, float* output,
     int batch_size, int in_channels, int out_channels,
     int input_h, int input_w, int kernel_h, int kernel_w,
@@ -310,21 +310,21 @@ void conv_transpose_2d_e32m8(
                                 
                                 if (processable <= 0) break;
                                 
-                                vl = __riscv_vsetvl_e32m8(processable);
+                                vl = SET_VECTOR_LENGTH<float, M8>(processable);
                                 
-                                vfloat32m8_t v_kernel = __riscv_vle32_v_f32m8(
+                                vfloat32m8_t v_kernel = VECTOR_LOAD<float, M8>(
                                     &kernel[ic * out_channels * kernel_h * kernel_w +
                                            oc * kernel_h * kernel_w +
                                            kh * kernel_w + kw], vl);
                                 
-                                vfloat32m8_t v_output = __riscv_vle32_v_f32m8(
+                                vfloat32m8_t v_output = VECTOR_LOAD<float, M8>(
                                     &output[b * out_channels * out_height * out_width +
                                            oc * out_height * out_width +
                                            out_h_idx * out_width + out_w_idx + kw], vl);
                                 
-                                v_output = __riscv_vfmacc_vf_f32m8(v_output, input_val, v_kernel, vl);
+                                v_output = VECTOR_FMACC_VF<float, M8>(v_output, input_val, v_kernel, vl);
                                 
-                                __riscv_vse32_v_f32m8(
+                                VECTOR_STORE<float, M8>(
                                     &output[b * out_channels * out_height * out_width +
                                            oc * out_height * out_width +
                                            out_h_idx * out_width + out_w_idx + kw], v_output, vl);
@@ -338,11 +338,11 @@ void conv_transpose_2d_e32m8(
 }
 
 
-/****************************** Vectorized for 3x3 filters Versions ******************************/
+/********************************* 3x3 Filter-Specific Vectorized Versions*********************************/
 
 // ========================== LMUL = M1 ==========================
 
-static void transposed_conv2d_3x3_stride1_m1(
+static void conv2d_transpose_3x3_stride1_m1(
     const float* input, const float* kernel, float* output,
     int in_channels, int in_h, int in_w, int out_channels
 ) {
@@ -388,7 +388,7 @@ static void transposed_conv2d_3x3_stride1_m1(
     }
 }
 
-static void transposed_conv2d_3x3_stride2_m1(
+static void conv2d_transpose_3x3_stride2_m1(
     const float* input, const float* kernel, float* output,
     int in_channels, int in_h, int in_w, int out_channels
 ) {
@@ -437,20 +437,20 @@ static void transposed_conv2d_3x3_stride2_m1(
     }
 }
 
-void transposed_conv2d_3x3_rvv_m1(
+void conv2d_transpose_3x3_rvv_m1(
     const float* input, const float* kernel, float* output,
     int in_channels, int in_h, int in_w, int out_channels, int stride_h, int stride_w
 ) {
     if (stride_h == 1 && stride_w == 1) {
-        transposed_conv2d_3x3_stride1_m1(input, kernel, output, in_channels, in_h, in_w, out_channels);
+        conv2d_transpose_3x3_stride1_m1(input, kernel, output, in_channels, in_h, in_w, out_channels);
     } else {
-        transposed_conv2d_3x3_stride2_m1(input, kernel, output, in_channels, in_h, in_w, out_channels);
+        conv2d_transpose_3x3_stride2_m1(input, kernel, output, in_channels, in_h, in_w, out_channels);
     }
 }
 
 // ========================== LMUL = M2 ==========================
 
-static void transposed_conv2d_3x3_stride1_m2(
+static void conv2d_transpose_3x3_stride1_m2(
     const float* input, const float* kernel, float* output,
     int in_channels, int in_h, int in_w, int out_channels
 ) {
@@ -496,7 +496,7 @@ static void transposed_conv2d_3x3_stride1_m2(
     }
 }
 
-static void transposed_conv2d_3x3_stride2_m2(
+static void conv2d_transpose_3x3_stride2_m2(
     const float* input, const float* kernel, float* output,
     int in_channels, int in_h, int in_w, int out_channels
 ) {
@@ -545,20 +545,20 @@ static void transposed_conv2d_3x3_stride2_m2(
     }
 }
 
-void transposed_conv2d_3x3_rvv_m2(
+void conv2d_transpose_3x3_rvv_m2(
     const float* input, const float* kernel, float* output,
     int in_channels, int in_h, int in_w, int out_channels, int stride_h, int stride_w
 ) {
     if (stride_h == 1 && stride_w == 1) {
-        transposed_conv2d_3x3_stride1_m2(input, kernel, output, in_channels, in_h, in_w, out_channels);
+        conv2d_transpose_3x3_stride1_m2(input, kernel, output, in_channels, in_h, in_w, out_channels);
     } else {
-        transposed_conv2d_3x3_stride2_m2(input, kernel, output, in_channels, in_h, in_w, out_channels);
+        conv2d_transpose_3x3_stride2_m2(input, kernel, output, in_channels, in_h, in_w, out_channels);
     }
 }
 
 // ========================== LMUL = M4 ==========================
 
-static void transposed_conv2d_3x3_stride1_m4(
+static void conv2d_transpose_3x3_stride1_m4(
     const float* input, const float* kernel, float* output,
     int in_channels, int in_h, int in_w, int out_channels
 ) {
@@ -604,7 +604,7 @@ static void transposed_conv2d_3x3_stride1_m4(
     }
 }
 
-static void transposed_conv2d_3x3_stride2_m4(
+static void conv2d_transpose_3x3_stride2_m4(
     const float* input, const float* kernel, float* output,
     int in_channels, int in_h, int in_w, int out_channels
 ) {
@@ -653,20 +653,20 @@ static void transposed_conv2d_3x3_stride2_m4(
     }
 }
 
-void transposed_conv2d_3x3_rvv_m4(
+void conv2d_transpose_3x3_rvv_m4(
     const float* input, const float* kernel, float* output,
     int in_channels, int in_h, int in_w, int out_channels, int stride_h, int stride_w
 ) {
     if (stride_h == 1 && stride_w == 1) {
-        transposed_conv2d_3x3_stride1_m4(input, kernel, output, in_channels, in_h, in_w, out_channels);
+        conv2d_transpose_3x3_stride1_m4(input, kernel, output, in_channels, in_h, in_w, out_channels);
     } else {
-        transposed_conv2d_3x3_stride2_m4(input, kernel, output, in_channels, in_h, in_w, out_channels);
+        conv2d_transpose_3x3_stride2_m4(input, kernel, output, in_channels, in_h, in_w, out_channels);
     }
 }
 
 // ========================== LMUL = M8 ==========================
 
-static void transposed_conv2d_3x3_stride1_m8(
+static void conv2d_transpose_3x3_stride1_m8(
     const float* input, const float* kernel, float* output,
     int in_channels, int in_h, int in_w, int out_channels
 ) {
@@ -712,7 +712,7 @@ static void transposed_conv2d_3x3_stride1_m8(
     }
 }
 
-static void transposed_conv2d_3x3_stride2_m8(
+static void conv2d_transpose_3x3_stride2_m8(
     const float* input, const float* kernel, float* output,
     int in_channels, int in_h, int in_w, int out_channels
 ) {
@@ -761,13 +761,13 @@ static void transposed_conv2d_3x3_stride2_m8(
     }
 }
 
-void transposed_conv2d_3x3_rvv_m8(
+void conv2d_transpose_3x3_rvv_m8(
     const float* input, const float* kernel, float* output,
     int in_channels, int in_h, int in_w, int out_channels, int stride_h, int stride_w
 ) {
     if (stride_h == 1 && stride_w == 1) {
-        transposed_conv2d_3x3_stride1_m8(input, kernel, output, in_channels, in_h, in_w, out_channels);
+        conv2d_transpose_3x3_stride1_m8(input, kernel, output, in_channels, in_h, in_w, out_channels);
     } else {
-        transposed_conv2d_3x3_stride2_m8(input, kernel, output, in_channels, in_h, in_w, out_channels);
+        conv2d_transpose_3x3_stride2_m8(input, kernel, output, in_channels, in_h, in_w, out_channels);
     }
 }

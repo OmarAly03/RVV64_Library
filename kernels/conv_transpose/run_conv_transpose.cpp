@@ -68,15 +68,15 @@ int main(int argc, char* argv[]) {
     write_matrix_binary("./output_files/input.bin", input, input_size);
     write_matrix_binary("./output_files/kernel.bin", kernel, kernel_size);
     
-    conv_transpose_2d_scalar(input, kernel, output, batch_size, in_channels, out_channels,
+    conv2d_transpose_scalar(input, kernel, output, batch_size, in_channels, out_channels,
                            input_h, input_w, kernel_h, kernel_w, stride_h, stride_w, pad_h, pad_w);
     write_matrix_binary("./output_files/output_scalar.bin", output, output_size);
     
     #ifdef RVV_AVAILABLE
     // New implementation only supports batch_size=1
     if (batch_size == 1) {
-        transposed_conv2d_3x3_s2_direct_m8(input, kernel, output, in_channels, input_h, input_w, out_channels, stride_h, stride_w);
-        write_matrix_binary("./output_files/output_e32m2.bin", output, output_size);
+        conv2d_transpose_3x3_rvv_m8(input, kernel, output, in_channels, input_h, input_w, out_channels, stride_h, stride_w);
+        write_matrix_binary("./output_files/output_e32m8.bin", output, output_size);
     } else {
         cout << "Warning: RVV implementation only supports batch_size=1. Skipping vectorized version." << endl;
     }
