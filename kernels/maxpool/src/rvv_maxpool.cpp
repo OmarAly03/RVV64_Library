@@ -3,6 +3,7 @@
 #include <float.h>
 #include <algorithm>
 #include <cfloat>
+#include "rvv_defs.hpp"
 
 #define MIN(a,b) (((a)<(b))?(a):(b))
 #define MAX(a,b) (((a)>(b))?(a):(b))
@@ -70,8 +71,8 @@ void maxpool_e32m1(const float* input, float* output,
 				int ih_start = oh * stride_h - pad_h;
 
 				for (int ow = 0; ow < out_w; ) {
-					size_t vl = __riscv_vsetvl_e32m1(out_w - ow);
-					vfloat32m1_t v_max = __riscv_vfmv_v_f_f32m1(-FLT_MAX, vl);
+					size_t vl = SET_VECTOR_LENGTH<float, M1>(out_w - ow);
+					vfloat32m1_t v_max = VECTOR_BROADCAST<float, M1>(-FLT_MAX, vl);
 
 					for (int kh = 0; kh < k_h; ++kh) {
 						int ih = ih_start + kh;
@@ -84,14 +85,14 @@ void maxpool_e32m1(const float* input, float* output,
 
 							vfloat32m1_t v_in;
 							if (stride_w == 1) {
-								v_in = __riscv_vle32_v_f32m1(load_addr, vl);
+								v_in = VECTOR_LOAD<float, M1>(load_addr, vl);
 							} else {
-								v_in = __riscv_vlse32_v_f32m1(load_addr, stride_w * sizeof(float), vl);
+								v_in = VECTOR_STRIDED_LOAD<float, M1>(load_addr, stride_w * sizeof(float), vl);
 							}
-							v_max = __riscv_vfmax_vv_f32m1(v_max, v_in, vl);
+							v_max = VECTOR_MAX<float, M1>(v_max, v_in, vl);
 						}
 					}
-					__riscv_vse32_v_f32m1(out_ptr_base + oh * out_w + ow, v_max, vl);
+					VECTOR_STORE<float, M1>(out_ptr_base + oh * out_w + ow, v_max, vl);
 					ow += vl;
 				}
 			}
@@ -118,8 +119,8 @@ void maxpool_e32m2(const float* input, float* output,
 				int ih_start = oh * stride_h - pad_h;
 
 				for (int ow = 0; ow < out_w; ) {
-					size_t vl = __riscv_vsetvl_e32m2(out_w - ow);
-					vfloat32m2_t v_max = __riscv_vfmv_v_f_f32m2(-FLT_MAX, vl);
+					size_t vl = SET_VECTOR_LENGTH<float, M2>(out_w - ow);
+					vfloat32m2_t v_max = VECTOR_BROADCAST<float, M2>(-FLT_MAX, vl);
 
 					for (int kh = 0; kh < k_h; ++kh) {
 						int ih = ih_start + kh;
@@ -132,14 +133,14 @@ void maxpool_e32m2(const float* input, float* output,
 
 							vfloat32m2_t v_in;
 							if (stride_w == 1) {
-								v_in = __riscv_vle32_v_f32m2(load_addr, vl);
+								v_in = VECTOR_LOAD<float, M2>(load_addr, vl);
 							} else {
-								v_in = __riscv_vlse32_v_f32m2(load_addr, stride_w * sizeof(float), vl);
+								v_in = VECTOR_STRIDED_LOAD<float, M2>(load_addr, stride_w * sizeof(float), vl);
 							}
-							v_max = __riscv_vfmax_vv_f32m2(v_max, v_in, vl);
+							v_max = VECTOR_MAX<float, M2>(v_max, v_in, vl);
 						}
 					}
-					__riscv_vse32_v_f32m2(out_ptr_base + oh * out_w + ow, v_max, vl);
+					VECTOR_STORE<float, M2>(out_ptr_base + oh * out_w + ow, v_max, vl);
 					ow += vl;
 				}
 			}
@@ -166,8 +167,8 @@ void maxpool_e32m4(const float* input, float* output,
 				int ih_start = oh * stride_h - pad_h;
 
 				for (int ow = 0; ow < out_w; ) {
-					size_t vl = __riscv_vsetvl_e32m4(out_w - ow);
-					vfloat32m4_t v_max = __riscv_vfmv_v_f_f32m4(-FLT_MAX, vl);
+					size_t vl = SET_VECTOR_LENGTH<float, M4>(out_w - ow);
+					vfloat32m4_t v_max = VECTOR_BROADCAST<float, M4>(-FLT_MAX, vl);
 
 					for (int kh = 0; kh < k_h; ++kh) {
 						int ih = ih_start + kh;
@@ -180,14 +181,14 @@ void maxpool_e32m4(const float* input, float* output,
 
 							vfloat32m4_t v_in;
 							if (stride_w == 1) {
-								v_in = __riscv_vle32_v_f32m4(load_addr, vl);
+								v_in = VECTOR_LOAD<float, M4>(load_addr, vl);
 							} else {
-								v_in = __riscv_vlse32_v_f32m4(load_addr, stride_w * sizeof(float), vl);
+								v_in = VECTOR_STRIDED_LOAD<float, M4>(load_addr, stride_w * sizeof(float), vl);
 							}
-							v_max = __riscv_vfmax_vv_f32m4(v_max, v_in, vl);
+							v_max = VECTOR_MAX<float, M4>(v_max, v_in, vl);
 						}
 					}
-					__riscv_vse32_v_f32m4(out_ptr_base + oh * out_w + ow, v_max, vl);
+					VECTOR_STORE<float, M4>(out_ptr_base + oh * out_w + ow, v_max, vl);
 					ow += vl;
 				}
 			}
@@ -214,8 +215,8 @@ void maxpool_e32m8(const float* input, float* output,
                 int ih_start = oh * stride_h - pad_h;
 
                 for (int ow = 0; ow < out_w; ) {
-                    size_t vl = __riscv_vsetvl_e32m8(out_w - ow);
-                    vfloat32m8_t v_max = __riscv_vfmv_v_f_f32m8(-FLT_MAX, vl);
+                    size_t vl = SET_VECTOR_LENGTH<float, M8>(out_w - ow);
+                    vfloat32m8_t v_max = VECTOR_BROADCAST<float, M8>(-FLT_MAX, vl);
 
                     for (int kh = 0; kh < k_h; ++kh) {
                         int ih = ih_start + kh;
@@ -232,14 +233,14 @@ void maxpool_e32m8(const float* input, float* output,
 
                             vfloat32m8_t v_in;
                             if (stride_w == 1) {
-                                v_in = __riscv_vle32_v_f32m8(load_addr, vl);
+                                v_in = VECTOR_LOAD<float, M8>(load_addr, vl);
                             } else {
-                                v_in = __riscv_vlse32_v_f32m8(load_addr, stride_w * sizeof(float), vl);
+                                v_in = VECTOR_STRIDED_LOAD<float, M8>(load_addr, stride_w * sizeof(float), vl);
                             }
-                            v_max = __riscv_vfmax_vv_f32m8(v_max, v_in, vl);
+                            v_max = VECTOR_MAX<float, M8>(v_max, v_in, vl);
                         }
                     }
-                    __riscv_vse32_v_f32m8(out_ptr_base + oh * out_w + ow, v_max, vl);
+                    VECTOR_STORE<float, M8>(out_ptr_base + oh * out_w + ow, v_max, vl);
                     ow += vl;
                 }
             }
