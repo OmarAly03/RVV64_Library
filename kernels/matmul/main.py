@@ -92,9 +92,25 @@ onnx_ref = session.run(None, {input_names[0]: A, input_names[1]: B})[0]
 # ==== C Scalar ====
 c_scalar = np.fromfile(os.path.join(SCRIPT_DIR, "./output_files/c_scalar.bin"), dtype=np.float32).reshape(M, N)
 
+# ==== C Vectorized ====
+c_e32m1 = np.fromfile(os.path.join(SCRIPT_DIR, "./output_files/c_e32m1.bin"), dtype=np.float32).reshape(M, N)
+c_e32m2 = np.fromfile(os.path.join(SCRIPT_DIR, "./output_files/c_e32m2.bin"), dtype=np.float32).reshape(M, N)
+c_e32m4 = np.fromfile(os.path.join(SCRIPT_DIR, "./output_files/c_e32m4.bin"), dtype=np.float32).reshape(M, N)
+c_e32m8 = np.fromfile(os.path.join(SCRIPT_DIR, "./output_files/c_e32m8.bin"), dtype=np.float32).reshape(M, N)
+
+# ==== C Vectorized Unroll ====
+c_e32m1_unroll = np.fromfile(os.path.join(SCRIPT_DIR, "./output_files/c_e32m1_unroll.bin"), dtype=np.float32).reshape(M, N)
+c_e32m2_unroll = np.fromfile(os.path.join(SCRIPT_DIR, "./output_files/c_e32m2_unroll.bin"), dtype=np.float32).reshape(M, N)
+c_e32m4_unroll = np.fromfile(os.path.join(SCRIPT_DIR, "./output_files/c_e32m4_unroll.bin"), dtype=np.float32).reshape(M, N)
+c_e32m8_unroll = np.fromfile(os.path.join(SCRIPT_DIR, "./output_files/c_e32m8_unroll.bin"), dtype=np.float32).reshape(M, N)
+
 # ==== C Scalar Tiled Version ====
 c_tiled_scalar = np.fromfile(os.path.join(SCRIPT_DIR, "./output_files/c_tiled_scalar.bin"), dtype=np.float32).reshape(M, N)
 
+# ==== C Vectorized Tiled Version ====
+c_tiled_e32m1 = np.fromfile(os.path.join(SCRIPT_DIR, "./output_files/c_tiled_e32m1.bin"), dtype=np.float32).reshape(M, N)
+c_tiled_e32m2 = np.fromfile(os.path.join(SCRIPT_DIR, "./output_files/c_tiled_e32m2.bin"), dtype=np.float32).reshape(M, N)
+c_tiled_e32m4 = np.fromfile(os.path.join(SCRIPT_DIR, "./output_files/c_tiled_e32m4.bin"), dtype=np.float32).reshape(M, N)
 c_tiled_e32m8 = np.fromfile(os.path.join(SCRIPT_DIR, "./output_files/c_tiled_e32m8.bin"), dtype=np.float32).reshape(M, N)
 
 # ONNX --> golden reference
@@ -104,7 +120,18 @@ c_ref = onnx_ref
 implementations = [
 	("ONNX Golden Ref", onnx_ref),
 	("C Scalar", c_scalar),
+    ("C e32m1", c_e32m1),
+    ("C e32m2", c_e32m2),
+    ("C e32m4", c_e32m4),
+    ("C e32m8", c_e32m8),
+    ("C e32m1 unroll", c_e32m1_unroll),
+    ("C e32m2 unroll", c_e32m2_unroll),
+	("C e32m4 unroll", c_e32m4_unroll),
+    ("C e32m8 unroll", c_e32m8_unroll),
 	("C Tiled Scalar", c_tiled_scalar),
+	("C Tiled e32m1", c_tiled_e32m1),
+	("C Tiled e32m2", c_tiled_e32m2),
+	("C Tiled e32m4", c_tiled_e32m4),
 	("C Tiled e32m8", c_tiled_e32m8),
 ]
 

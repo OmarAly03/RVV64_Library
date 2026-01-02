@@ -94,11 +94,48 @@ int main(int argc, char* argv[]) {
     write_matrix_binary("./output_files/A.bin", A, M * K);
     write_matrix_binary("./output_files/B.bin", B, K * N);
 
+	// scalar
     matmul_scalar(A, B, C, M, N, K);
     write_matrix_binary("./output_files/c_scalar.bin", C, M * N);
 
-    matmul_tiled_scalar(A, B, C, M, N, K, tilesize, tilesize, tilesize);
+	// vector
+	matmul_e32m1(A, B, C, M, N, K);
+    write_matrix_binary("./output_files/c_e32m1.bin", C, M * N);
+
+	matmul_e32m2(A, B, C, M, N, K);
+    write_matrix_binary("./output_files/c_e32m2.bin", C, M * N);
+
+	matmul_e32m4(A, B, C, M, N, K);
+    write_matrix_binary("./output_files/c_e32m4.bin", C, M * N);
+
+	matmul_e32m8(A, B, C, M, N, K);
+    write_matrix_binary("./output_files/c_e32m8.bin", C, M * N);
+
+	// vector unroll
+	matmul_e32m1_unroll(A, B, C, M, N, K);
+    write_matrix_binary("./output_files/c_e32m1_unroll.bin", C, M * N);
+
+	matmul_e32m2_unroll(A, B, C, M, N, K);
+    write_matrix_binary("./output_files/c_e32m2_unroll.bin", C, M * N);
+
+	matmul_e32m4_unroll(A, B, C, M, N, K);
+    write_matrix_binary("./output_files/c_e32m4_unroll.bin", C, M * N);
+
+	matmul_e32m8_unroll(A, B, C, M, N, K);
+    write_matrix_binary("./output_files/c_e32m8_unroll.bin", C, M * N);
+
+	// tiled
+	matmul_tiled_scalar(A, B, C, M, N, K, tilesize, tilesize, tilesize);
     write_matrix_binary("./output_files/c_tiled_scalar.bin", C, M * N);
+
+	matmul_tiled_e32m1(A, B, C, M, N, K, tilesize, tilesize, tilesize);
+    write_matrix_binary("./output_files/c_tiled_e32m1.bin", C, M * N);
+
+	matmul_tiled_e32m2(A, B, C, M, N, K, tilesize, tilesize, tilesize);
+    write_matrix_binary("./output_files/c_tiled_e32m2.bin", C, M * N);
+
+	matmul_tiled_e32m4(A, B, C, M, N, K, tilesize, tilesize, tilesize);
+    write_matrix_binary("./output_files/c_tiled_e32m4.bin", C, M * N);
 
     matmul_tiled_e32m8(A, B, C, M, N, K, tilesize, tilesize, tilesize);
     write_matrix_binary("./output_files/c_tiled_e32m8.bin", C, M * N);
