@@ -64,16 +64,16 @@ int main(int argc, char* argv[]) {
     write_matrix_binary("./output_files/bias_add_scalar.bin", output, output_size);
 
     /***** BiasAdd Vectorized e32mx *****/
-    bias_add_e32m1(input, bias, output, B, C, H, W);
+    bias_add_e32m1(input, bias, output, C, H * W);
     write_matrix_binary("./output_files/bias_add_e32m1.bin", output, output_size);
 
-    bias_add_e32m2(input, bias, output, B, C, H, W);
+    bias_add_e32m2(input, bias, output, C, H * W);
     write_matrix_binary("./output_files/bias_add_e32m2.bin", output, output_size);
 
-    bias_add_e32m4(input, bias, output, B, C, H, W);
+    bias_add_e32m4(input, bias, output, C, H * W);
     write_matrix_binary("./output_files/bias_add_e32m4.bin", output, output_size);
 
-    bias_add_e32m8(input, bias, output, B, C, H, W);
+    bias_add_e32m8(input, bias, output, C, H * W);
     write_matrix_binary("./output_files/bias_add_e32m8.bin", output, output_size);
 
     // --- CLEANUP ---
