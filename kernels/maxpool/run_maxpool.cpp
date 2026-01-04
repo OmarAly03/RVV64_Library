@@ -61,6 +61,18 @@ int main(int argc, char* argv[]) {
     maxpool_e32m8(in, out_rvv, N, C, H, W, KH, KW, SH, SW, PH, PW);
     write_matrix_binary("./output_files/maxpool_e32m8.bin", out_rvv, output_size);
 
+	maxpool_rvv_tiled_m1(in, out_rvv, N, C, H, W, KH, KW, SH, SW, PH, PW, 8, 256);
+    write_matrix_binary("./output_files/maxpool_tiled_m1.bin", out_rvv, output_size);
+
+	maxpool_rvv_tiled_m2(in, out_rvv, N, C, H, W, KH, KW, SH, SW, PH, PW, 8, 256);
+    write_matrix_binary("./output_files/maxpool_tiled_m2.bin", out_rvv, output_size);
+
+	maxpool_rvv_tiled_m4(in, out_rvv, N, C, H, W, KH, KW, SH, SW, PH, PW, 8, 256);
+    write_matrix_binary("./output_files/maxpool_tiled_m4.bin", out_rvv, output_size);
+
+	maxpool_rvv_tiled_m8(in, out_rvv, N, C, H, W, KH, KW, SH, SW, PH, PW, 8, 256);
+    write_matrix_binary("./output_files/maxpool_tiled_m8.bin", out_rvv, output_size);
+	
     // --- CLEANUP ---
     delete[] in;
     delete[] out_scalar;

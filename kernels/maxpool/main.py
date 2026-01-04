@@ -55,6 +55,11 @@ c_e32m2 = np.fromfile(os.path.join(SCRIPT_DIR, "./output_files/maxpool_e32m2.bin
 c_e32m4 = np.fromfile(os.path.join(SCRIPT_DIR, "./output_files/maxpool_e32m4.bin"), dtype=np.float32).reshape(output_shape)
 c_e32m8 = np.fromfile(os.path.join(SCRIPT_DIR, "./output_files/maxpool_e32m8.bin"), dtype=np.float32).reshape(output_shape)
 
+maxpool_tiled_m1 = np.fromfile(os.path.join(SCRIPT_DIR, "./output_files/maxpool_tiled_m1.bin"), dtype=np.float32).reshape(output_shape)
+maxpool_tiled_m2 = np.fromfile(os.path.join(SCRIPT_DIR, "./output_files/maxpool_tiled_m2.bin"), dtype=np.float32).reshape(output_shape)
+maxpool_tiled_m4 = np.fromfile(os.path.join(SCRIPT_DIR, "./output_files/maxpool_tiled_m4.bin"), dtype=np.float32).reshape(output_shape)
+maxpool_tiled_m8 = np.fromfile(os.path.join(SCRIPT_DIR, "./output_files/maxpool_tiled_m8.bin"), dtype=np.float32).reshape(output_shape)
+
 # ==== Results Table ====
 implementations = [
     ("ONNX Golden Ref", onnx_ref),
@@ -63,6 +68,10 @@ implementations = [
     ("C RVV e32m2", c_e32m2),
     ("C RVV e32m4", c_e32m4),
     ("C RVV e32m8", c_e32m8),
+	("C RVV tiled_m1", maxpool_tiled_m1),
+	("C RVV tiled_m2", maxpool_tiled_m2),
+	("C RVV tiled_m4", maxpool_tiled_m4), 
+    ("C RVV tiled_m8", maxpool_tiled_m8),
 ]
 
 print(f"\n{'Implementation':<30}{'Max Abs Error':<20}{'SNR (dB)':<20}")

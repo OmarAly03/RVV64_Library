@@ -248,4 +248,244 @@ void maxpool_e32m8(const float* input, float* output,
     }
 }
 
+/********************************* Tiled Versions *********************************/
+
+void maxpool_rvv_tiled_m1(const float* input, float* output,
+                          int batch, int channels,
+                          int in_h, int in_w,
+                          int k_h, int k_w,
+                          int stride_h, int stride_w,
+                          int pad_h, int pad_w,
+                          int tile_h, int tile_w) {
+    
+    int out_h = (in_h + 2 * pad_h - k_h) / stride_h + 1;
+    int out_w = (in_w + 2 * pad_w - k_w) / stride_w + 1;
+
+    for (int b = 0; b < batch; ++b) {
+        for (int c = 0; c < channels; ++c) {
+            const float* in_ptr_base = input + (b * channels + c) * in_h * in_w;
+            float* out_ptr_base = output + (b * channels + c) * out_h * out_w;
+
+            for (int th = 0; th < out_h; th += tile_h) {
+                int th_end = MIN(th + tile_h, out_h);
+                for (int tw = 0; tw < out_w; tw += tile_w) {
+                    int tw_end = MIN(tw + tile_w, out_w);
+
+                    for (int oh = th; oh < th_end; ++oh) {
+                        int ih_start = oh * stride_h - pad_h;
+                        for (int ow = tw; ow < tw_end; ) {
+                            size_t vl = SET_VECTOR_LENGTH<float, M1>(tw_end - ow);
+                            auto v_max = VECTOR_BROADCAST<float, M1>(-FLT_MAX, vl);
+
+                            for (int kh = 0; kh < k_h; ++kh) {
+                                int ih = ih_start + kh;
+                                if (ih < 0 || ih >= in_h) continue;
+
+                                const float* row_ptr = in_ptr_base + ih * in_w;
+                                int iw_base = ow * stride_w - pad_w;
+
+                                for (int kw = 0; kw < k_w; ++kw) {
+                                    int curr_iw = iw_base + kw;
+                                    vfloat32m1_t v_in;
+                                    if (stride_w == 1) {
+                                        v_in = VECTOR_LOAD<float, M1>(row_ptr + curr_iw, vl);
+                                    } else {
+                                        v_in = VECTOR_STRIDED_LOAD<float, M1>(row_ptr + curr_iw, stride_w * sizeof(float), vl);
+                                    }
+                                    v_max = VECTOR_MAX<float, M1>(v_max, v_in, vl);
+                                }
+                            }
+                            VECTOR_STORE<float, M1>(out_ptr_base + oh * out_w + ow, v_max, vl);
+                            ow += vl;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+void maxpool_rvv_tiled_m2(const float* input, float* output,
+                                   int batch, int channels,
+                                   int in_h, int in_w,
+                                   int k_h, int k_w,
+                                   int stride_h, int stride_w,
+                                   int pad_h, int pad_w,
+                                   int tile_h, int tile_w) {
+    
+    int out_h = (in_h + 2 * pad_h - k_h) / stride_h + 1;
+    int out_w = (in_w + 2 * pad_w - k_w) / stride_w + 1;
+
+    for (int b = 0; b < batch; ++b) {
+        for (int c = 0; c < channels; ++c) {
+            const float* in_ptr_base = input + (b * channels + c) * in_h * in_w;
+            float* out_ptr_base = output + (b * channels + c) * out_h * out_w;
+
+            for (int th = 0; th < out_h; th += tile_h) {
+                int th_end = MIN(th + tile_h, out_h);
+                
+                for (int tw = 0; tw < out_w; tw += tile_w) {
+                    int tw_end = MIN(tw + tile_w, out_w);
+
+                    for (int oh = th; oh < th_end; ++oh) {
+                        int ih_start = oh * stride_h - pad_h;
+                        
+                        for (int ow = tw; ow < tw_end; ) {
+                            size_t vl = SET_VECTOR_LENGTH<float, M2>(tw_end - ow);
+                            auto v_max = VECTOR_BROADCAST<float, M2>(-FLT_MAX, vl);
+
+                            for (int kh = 0; kh < k_h; ++kh) {
+                                int ih = ih_start + kh;
+                                // Correctness: Skip if the kernel row is in the padding area
+                                if (ih < 0 || ih >= in_h) continue;
+
+                                const float* row_ptr = in_ptr_base + ih * in_w;
+                                int iw_base = ow * stride_w - pad_w;
+
+                                // --- UNROLLED KERNEL WIDTH ---
+                                // We issue loads together to fill the pipeline
+                                for (int kw = 0; kw < k_w; ++kw) {
+                                    int curr_iw = iw_base + kw;
+
+                                    vfloat32m2_t v_in;
+                                    if (stride_w == 1) {
+                                        v_in = VECTOR_LOAD<float, M2>(row_ptr + curr_iw, vl);
+                                    } else {
+                                        v_in = VECTOR_STRIDED_LOAD<float, M2>(row_ptr + curr_iw, stride_w * sizeof(float), vl);
+                                    }
+                                    
+                                    v_max = VECTOR_MAX<float, M2>(v_max, v_in, vl);
+                                }
+                            }
+                            
+                            // Store results back to the output tile
+                            VECTOR_STORE<float, M2>(out_ptr_base + oh * out_w + ow, v_max, vl);
+                            ow += vl;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+void maxpool_rvv_tiled_m4(const float* input, float* output,
+                                   int batch, int channels,
+                                   int in_h, int in_w,
+                                   int k_h, int k_w,
+                                   int stride_h, int stride_w,
+                                   int pad_h, int pad_w,
+                                   int tile_h, int tile_w) {
+    
+    int out_h = (in_h + 2 * pad_h - k_h) / stride_h + 1;
+    int out_w = (in_w + 2 * pad_w - k_w) / stride_w + 1;
+
+    for (int b = 0; b < batch; ++b) {
+        for (int c = 0; c < channels; ++c) {
+            const float* in_ptr_base = input + (b * channels + c) * in_h * in_w;
+            float* out_ptr_base = output + (b * channels + c) * out_h * out_w;
+
+            for (int th = 0; th < out_h; th += tile_h) {
+                int th_end = MIN(th + tile_h, out_h);
+                
+                for (int tw = 0; tw < out_w; tw += tile_w) {
+                    int tw_end = MIN(tw + tile_w, out_w);
+
+                    for (int oh = th; oh < th_end; ++oh) {
+                        int ih_start = oh * stride_h - pad_h;
+                        
+                        for (int ow = tw; ow < tw_end; ) {
+                            size_t vl = SET_VECTOR_LENGTH<float, M4>(tw_end - ow);
+                            auto v_max = VECTOR_BROADCAST<float, M4>(-FLT_MAX, vl);
+
+                            for (int kh = 0; kh < k_h; ++kh) {
+                                int ih = ih_start + kh;
+                                // Correctness: Skip if the kernel row is in the padding area
+                                if (ih < 0 || ih >= in_h) continue;
+
+                                const float* row_ptr = in_ptr_base + ih * in_w;
+                                int iw_base = ow * stride_w - pad_w;
+
+                                // --- UNROLLED KERNEL WIDTH ---
+                                // We issue loads together to fill the pipeline
+                                for (int kw = 0; kw < k_w; ++kw) {
+                                    int curr_iw = iw_base + kw;
+                                    
+                                    vfloat32m4_t v_in;
+                                    if (stride_w == 1) {
+                                        v_in = VECTOR_LOAD<float, M4>(row_ptr + curr_iw, vl);
+                                    } else {
+                                        v_in = VECTOR_STRIDED_LOAD<float, M4>(row_ptr + curr_iw, stride_w * sizeof(float), vl);
+                                    }
+                                    
+                                    v_max = VECTOR_MAX<float, M4>(v_max, v_in, vl);
+                                }
+                            }
+                            
+                            // Store results back to the output tile
+                            VECTOR_STORE<float, M4>(out_ptr_base + oh * out_w + ow, v_max, vl);
+                            ow += vl;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+void maxpool_rvv_tiled_m8(const float* input, float* output,
+                          int batch, int channels,
+                          int in_h, int in_w,
+                          int k_h, int k_w,
+                          int stride_h, int stride_w,
+                          int pad_h, int pad_w,
+                          int tile_h, int tile_w) {
+    
+    int out_h = (in_h + 2 * pad_h - k_h) / stride_h + 1;
+    int out_w = (in_w + 2 * pad_w - k_w) / stride_w + 1;
+
+    for (int b = 0; b < batch; ++b) {
+        for (int c = 0; c < channels; ++c) {
+            const float* in_ptr_base = input + (b * channels + c) * in_h * in_w;
+            float* out_ptr_base = output + (b * channels + c) * out_h * out_w;
+
+            for (int th = 0; th < out_h; th += tile_h) {
+                int th_end = MIN(th + tile_h, out_h);
+                for (int tw = 0; tw < out_w; tw += tile_w) {
+                    int tw_end = MIN(tw + tile_w, out_w);
+
+                    for (int oh = th; oh < th_end; ++oh) {
+                        int ih_start = oh * stride_h - pad_h;
+                        for (int ow = tw; ow < tw_end; ) {
+                            size_t vl = SET_VECTOR_LENGTH<float, M8>(tw_end - ow);
+                            auto v_max = VECTOR_BROADCAST<float, M8>(-FLT_MAX, vl);
+
+                            for (int kh = 0; kh < k_h; ++kh) {
+                                int ih = ih_start + kh;
+                                if (ih < 0 || ih >= in_h) continue;
+
+                                const float* row_ptr = in_ptr_base + ih * in_w;
+                                int iw_base = ow * stride_w - pad_w;
+
+                                for (int kw = 0; kw < k_w; ++kw) {
+                                    int curr_iw = iw_base + kw;
+                                    vfloat32m8_t v_in;
+                                    if (stride_w == 1) {
+                                        v_in = VECTOR_LOAD<float, M8>(row_ptr + curr_iw, vl);
+                                    } else {
+                                        v_in = VECTOR_STRIDED_LOAD<float, M8>(row_ptr + curr_iw, stride_w * sizeof(float), vl);
+                                    }
+                                    v_max = VECTOR_MAX<float, M8>(v_max, v_in, vl);
+                                }
+                            }
+                            VECTOR_STORE<float, M8>(out_ptr_base + oh * out_w + ow, v_max, vl);
+                            ow += vl;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 /********************************* End of File *********************************/
