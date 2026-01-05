@@ -52,30 +52,59 @@ kernel_data = np.fromfile(os.path.join(SCRIPT_DIR, "./output_files/kernel.bin"),
 input_names = [input.name for input in onnx_model.graph.input]
 onnx_ref = session.run(None, {input_names[0]: input_data, input_names[1]: kernel_data})[0]
 
-# ==== C Scalar (optional if present) ====
-c_scalar = None
-scalar_path = os.path.join(SCRIPT_DIR, "./output_files/output_scalar.bin")
-if os.path.exists(scalar_path):
-    c_scalar = np.fromfile(scalar_path, dtype=np.float32).reshape(1, out_channels, out_height, out_width)
+# Helper function to load output file
+def load_output(filename):
+    path = os.path.join(SCRIPT_DIR, f"./output_files/{filename}")
+    if os.path.exists(path):
+        return np.fromfile(path, dtype=np.float32).reshape(1, out_channels, out_height, out_width)
+    return None
 
-# ==== C Vectorized (e32m2) (optional if present) ====
-c_e32m2 = None
-e32m2_path = os.path.join(SCRIPT_DIR, "./output_files/output_e32m2.bin")
-if os.path.exists(e32m2_path):
-    c_e32m2 = np.fromfile(e32m2_path, dtype=np.float32).reshape(1, out_channels, out_height, out_width)
+# ==== Load all implementations ====
+c_scalar = load_output("output_scalar.bin")
+
+# 3x3 Specialized RVV implementations
+c_3x3_m1 = load_output("output_3x3_m1.bin")
+c_3x3_m2 = load_output("output_3x3_m2.bin")
+c_3x3_m4 = load_output("output_3x3_m4.bin")
+c_3x3_m8 = load_output("output_3x3_m8.bin")
+
+# General RVV implementations
+c_general_m1 = load_output("output_general_m1.bin")
+c_general_m2 = load_output("output_general_m2.bin")
+c_general_m4 = load_output("output_general_m4.bin")
+c_general_m8 = load_output("output_general_m8.bin")
 
 # ONNX --> golden reference
 c_ref = onnx_ref
 
 # ==== Results Table ====
 implementations = [("ONNX Golden Ref", onnx_ref)]
+
 if c_scalar is not None:
     implementations.append(("C Scalar", c_scalar))
-if c_e32m2 is not None:
-    implementations.append(("C Vectorized (e32m2)", c_e32m2))
+
+# 3x3 Specialized
+if c_3x3_m1 is not None:
+    implementations.append(("RVV 3x3 (m1)", c_3x3_m1))
+if c_3x3_m2 is not None:
+    implementations.append(("RVV 3x3 (m2)", c_3x3_m2))
+if c_3x3_m4 is not None:
+    implementations.append(("RVV 3x3 (m4)", c_3x3_m4))
+if c_3x3_m8 is not None:
+    implementations.append(("RVV 3x3 (m8)", c_3x3_m8))
+
+# General
+if c_general_m1 is not None:
+    implementations.append(("RVV General (m1)", c_general_m1))
+if c_general_m2 is not None:
+    implementations.append(("RVV General (m2)", c_general_m2))
+if c_general_m4 is not None:
+    implementations.append(("RVV General (m4)", c_general_m4))
+if c_general_m8 is not None:
+    implementations.append(("RVV General (m8)", c_general_m8))
 
 print(f"\n{'Implementation':<25}{'Max Abs Error':<20}{'SNR (dB)':<20}")
-print("-" * 60)
+print("-" * 65)
 
 for name, result in implementations:
     mae = max_abs_error(c_ref, result)
