@@ -10,7 +10,7 @@ int main(int argc, char* argv[]) {
     // --- SET PARAMS ---
     int N = 16, C = 1, H = 4, W = 4; 
     int KH = 2, KW = 2;
-    int SH = 2, SW = 2;
+    int SH = 1, SW = 1;
     int PH = 0, PW = 0;
 
     if (argc == 5) {
