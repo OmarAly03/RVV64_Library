@@ -1,50 +1,75 @@
-// kernels.hpp
-#pragma once
-#include "model.hpp"
+#ifndef KERNELS_HPP
+#define KERNELS_HPP
 
+#include <riscv_vector.h>
+#include <algorithm>
+#include <cstring>
+#include <cmath>
+
+#ifndef MIN
+#define MIN(a,b) ((a) < (b) ? (a) : (b))
+#endif
+
+// Fixed GEMM block sizes (previously configurable)
+#define GEMM_BLOCK_M 8
+#define GEMM_BLOCK_N 64
+#define GEMM_BLOCK_K 32
+
+/****************** Specific Image Pre-processing Kernel ******************/
 void preprocess_image(
-    float* data, // In-place operation
-    const float* scale, // Shape [1]
-    const float* bias,  // Shape [3]
-    int channels, int height, int width
-);
+    float* data, const float* scale, const float* bias,
+    int channels, int height, int width);
 
+/************************************ CONV ************************************/
 void conv2d(
-    const float* input,
-    float* output,
-    const float* weights, // [Out_C, In_C, K, K]
+    const float* input, float* output, const float* weights,
     int in_channels, int in_height, int in_width,
     int out_channels, int out_height, int out_width,
-    int kernel_size, int stride, int pad_top, int pad_left
-);
+    int kernel_size, int stride, int pad_top, int pad_left);
 
-void batch_normalization(
-    float* data, // In-place operation
-    const float* scale,
-    const float* bias,
-    const float* mean,
-    const float* variance,
-    int channels, int height, int width,
-    float epsilon = 1e-5f
-);
+void gemm_blocked_e32m8(const float* A, const float* B, float* C,
+                        int M, int N, int K,
+                        int BM, int BN, int BK);
 
-void leaky_relu(
-    float* data, // In-place operation
-    size_t num_elements,
-    float alpha = 0.1f
-);
+void im2col_e32m8(const float* data_im, float* data_col,
+                  int channels, int height, int width,
+                  int kernel_h, int kernel_w,
+                  int pad_h, int pad_w,
+                  int stride_h, int stride_w);
 
-void max_pool_2d(
-    const float* input,
-    float* output,
-    int in_channels, int in_height, int in_width,
-    int out_height, int out_width,
-    int kernel_size, int stride, int pad_top, int pad_left
-);
+void conv2d_im2col_gemm_m8(
+    const float* input, const float* kernel, const float* bias,
+    float* output, float* col_buf, float* gemm_buf,
+    int in_channels, int input_h, int input_w, 
+    int out_channels, int kernel_h, int kernel_w,
+    int pad_h, int pad_w, int stride_h, int stride_w,
+    int has_bias);
 
-// Add bias (for the final layer)
-void add_bias(
-    float* data, // In-place
-    const float* biases, // Shape [Channels]
-    int channels, int height, int width
-);
+
+/************************************ Bias Add ************************************/
+void bias_add_e32m8(const float* input, const float* bias, float* output,
+	size_t channels, size_t channel_size);
+
+/************************************ Batch Norm ************************************/
+void batch_norm_e32m8(const float* input, float* output, const float* scale, const float* bias, const float* mean, const float* variance, int channels, int height, int width, float epsilon);
+
+/************************************ Maxpool ************************************/
+void maxpool_e32m8(const float* input, float* output,
+	int batch, int channels,
+	int in_h, int in_w,
+	int k_h, int k_w,
+	int stride_h, int stride_w,
+	int pad_h, int pad_w);
+
+void maxpool_e32m8_fixed(const float* input, float* output,
+	int batch, int channels,
+	int in_h, int in_w,
+	int out_h, int out_w,
+	int k_h, int k_w,
+	int stride_h, int stride_w,
+	int pad_h, int pad_w);
+
+/************************************ LeakyRelu ************************************/
+void leaky_relu_e32m8(const float* src, float* dest, size_t n, float alpha);
+
+#endif // KERNELS_HPP

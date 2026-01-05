@@ -1,21 +1,48 @@
-TARGET = main
-IMG_PATH ?= images/mark1.jpg
+# TARGET = main
+IMG ?= cat
 
-OPENCV_FLAGS = $(shell pkg-config --cflags --libs opencv4)
-$(TARGET): main.cpp src/kernels.cpp src/model.cpp
-	g++ main.cpp src/kernels.cpp src/model.cpp -Iinclude -o $(TARGET) -std=c++17 -O3 $(OPENCV_FLAGS)
+# Compiler and Flags
+CC = riscv64-unknown-linux-gnu-g++
+FLAGS = -march=rv64gcv -O1 -g -static
+
+# Include directories
+INCLUDES = -Iinclude 
+
+# Source files for YOLO (removed config.cpp)
+SRCS = main.cpp src/model.cpp src/kernels.cpp
+
+# Output binary
+TARGET = output_files/main
+
+# Default target
+all: $(TARGET)
+
+$(TARGET): $(SRCS)
+	@echo "Compiling YOLO for RVV..."
+	@$(CC) $(FLAGS) $(INCLUDES) -o $@ $(SRCS) -lm 
 
 run:
-	./main images/mark1.jpg model_parameters/
+	@echo "Running YOLO inference on RISC-V..."
+	@qemu-riscv64 -cpu rv64,v=true $(TARGET) image_binaries/$(IMG).bin model_parameters/
+	@echo "-------------------------------------------------------------------"
+	@echo "Visualizing results..."
+	@python3 visualize_results.py images/$(IMG).jpg ./output_files/detection_results.txt -o ./output_files/output_detected.jpg
+	@echo "Complete! Check output_detected.jpg for the visualization."
 
 extract_parameters: src/extract_weights.py
-	python3 src/extract_weights.py
-
+	@echo "Extracting Parameters..."
+	@python3 src/extract_weights.py
+	
 extract_image: src/extract_image.py
 	python3 src/extract_image.py $(IMG_PATH)
 
 clean:
-	rm -f main
+	@echo "Cleaning build files..."
+	find . \( -name "*.S" -o -name "*.o" -o -name "*.spike" \) -type f -delete
+	rm -f $(TARGET)
+	@echo "Done!"
 
-# For image extraction: 
-#	make extract_image IMG_PATH=images/<>
+clean_parameters:
+	@echo "Cleaning parameters files..."
+	rm -rf ./model_parameters/*.bin ./model_parameters/*.txt
+	@echo "Done!"

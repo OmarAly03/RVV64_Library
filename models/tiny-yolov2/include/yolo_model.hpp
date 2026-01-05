@@ -1,5 +1,6 @@
-// yolo_model.hpp
-#pragma once
+#ifndef YOLO_MODEL_HPP
+#define YOLO_MODEL_HPP
+
 #include "model.hpp" // The one with constants
 
 // Holds all parameters loaded from .bin files
@@ -35,3 +36,5 @@ std::vector<BoundingBox> yolo_model_inference(
 
 // Helper to load all weights from the directory
 void load_all_weights(ModelWeights& weights, const std::string& weight_dir);
+
+#endif // YOLO_MODEL_HPP

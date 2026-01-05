@@ -1,152 +1,58 @@
-// kernels.cpp
 #include "kernels.hpp"
-#include <cfloat> // for FLT_MAX
+#include <cfloat> 
+#include "../../../lib/rvv_defs.hpp"
 
-// (x * scale) + bias
+/****************** Specific Image Pre-processing Kernel ******************/
 void preprocess_image(
-    float* data, const float* scale,
-    const float* bias,
-    int channels, int height, int width)
-{
+    float* data, const float* scale, const float* bias,
+    int channels, int height, int width){
+		
     const size_t spatial_dim = height * width;
     const float s = scale[0];
+    
     for (int c = 0; c < channels; ++c) {
         float b = bias[c];
-        for (size_t i = 0; i < spatial_dim; ++i) {
-            size_t idx = c * spatial_dim + i;
-            data[idx] = (data[idx] * s) + b;
+        float* channel_data = data + c * spatial_dim;
+        
+        size_t i = 0;
+        while (i < spatial_dim) {
+            size_t vl = SET_VECTOR_LENGTH<float, M8>(spatial_dim - i);
+            
+            vfloat32m8_t v_data = VECTOR_LOAD<float, M8>(&channel_data[i], vl);
+            v_data = VECTOR_FMACC<float, M8>(VECTOR_BROADCAST<float, M8>(b, vl), s, v_data, vl);
+            VECTOR_STORE<float, M8>(&channel_data[i], v_data, vl);
+            
+            i += vl;
         }
     }
 }
 
-// NOTE: This is a *naive* implementation.
-// For real performance, you would use im2col + GEMM (e.g., with Eigen/BLAS)
+/************************************ CONV ************************************/
 void conv2d(
-    const float* input, float* output,
-    const float* weights,
+    const float* input, float* output, const float* weights,
     int in_channels, int in_height, int in_width,
     int out_channels, int out_height, int out_width,
-    int kernel_size, int stride, int pad_top, int pad_left)
-{
-    const int in_spatial = in_height * in_width;
-    const int out_spatial = out_height * out_width;
-    const int kernel_spatial = kernel_size * kernel_size;
+    int kernel_size, int stride, int pad_top, int pad_left){
 
-    // Clear output buffer
-    std::fill(output, output + (out_channels * out_spatial), 0.0f);
-
-    for (int c_out = 0; c_out < out_channels; ++c_out) {
-        for (int c_in = 0; c_in < in_channels; ++c_in) {
-            for (int h_out = 0; h_out < out_height; ++h_out) {
-                for (int w_out = 0; w_out < out_width; ++w_out) {
-                    
-                    const int h_in_start = h_out * stride - pad_top;
-                    const int w_in_start = w_out * stride - pad_left;
-                    
-                    float sum = 0.0f;
-                    
-                    for (int kh = 0; kh < kernel_size; ++kh) {
-                        for (int kw = 0; kw < kernel_size; ++kw) {
-                            
-                            const int h_in = h_in_start + kh;
-                            const int w_in = w_in_start + kw;
-
-                            if (h_in >= 0 && h_in < in_height && w_in >= 0 && w_in < in_width) {
-                                int in_idx = (c_in * in_spatial) + (h_in * in_width) + w_in;
-                                int w_idx = (c_out * in_channels * kernel_spatial) + (c_in * kernel_spatial) + (kh * kernel_size) + kw;
-                                sum += input[in_idx] * weights[w_idx];
-                            }
-                        }
-                    }
-                    output[(c_out * out_spatial) + (h_out * out_width) + w_out] += sum;
-                }
-            }
-        }
-    }
+    // Use vector convolution with temporary buffers
+    int out_h = (in_height + 2 * pad_top - kernel_size) / stride + 1;
+    int out_w = (in_width + 2 * pad_left - kernel_size) / stride + 1;
+    int K = in_channels * kernel_size * kernel_size;
+    int N = out_h * out_w;
+    
+    float* col_buf = new float[K * N];
+    float* gemm_buf = new float[out_channels * N];
+    
+    conv2d_im2col_gemm_m8(input, weights, nullptr, output, 
+                          col_buf, gemm_buf,
+                          in_channels, in_height, in_width,
+                          out_channels, kernel_size, kernel_size,
+                          pad_top, pad_left, stride, stride, 0);
+    
+    delete[] col_buf;
+    delete[] gemm_buf;
 }
 
-void batch_normalization(
-    float* data, const float* scale,
-    const float* bias, const float* mean,
-    const float* variance,
-    int channels, int height, int width, float epsilon)
-{
-    const int spatial_dim = height * width;
-    for (int c = 0; c < channels; ++c) {
-        float s = scale[c];
-        float b = bias[c];
-        float m = mean[c];
-        float v = variance[c];
-        
-        float std_dev_inv = 1.0f / std::sqrt(v + epsilon);
-        
-        for (int i = 0; i < spatial_dim; ++i) {
-            int idx = c * spatial_dim + i;
-            data[idx] = s * ((data[idx] - m) * std_dev_inv) + b;
-        }
-    }
-}
-
-void leaky_relu(float* data, size_t num_elements, float alpha) {
-    for (size_t i = 0; i < num_elements; ++i) {
-        if (data[i] < 0) {
-            data[i] = data[i] * alpha;
-        }
-    }
-}
-
-void max_pool_2d(
-    const float* input, float* output,
-    int in_channels, int in_height, int in_width,
-    int out_height, int out_width,
-    int kernel_size, int stride, int pad_top, int pad_left)
-{
-    const int in_spatial = in_height * in_width;
-    const int out_spatial = out_height * out_width;
-
-    for (int c = 0; c < in_channels; ++c) {
-        for (int h_out = 0; h_out < out_height; ++h_out) {
-            for (int w_out = 0; w_out < out_width; ++w_out) {
-                
-                const int h_in_start = h_out * stride - pad_top;
-                const int w_in_start = w_out * stride - pad_left;
-                
-                float max_val = -FLT_MAX;
-                
-                for (int kh = 0; kh < kernel_size; ++kh) {
-                    for (int kw = 0; kw < kernel_size; ++kw) {
-                        int h_in = h_in_start + kh;
-                        int w_in = w_in_start + kw;
-                        
-                        if (h_in >= 0 && h_in < in_height && w_in >= 0 && w_in < in_width) {
-                            int in_idx = (c * in_spatial) + (h_in * in_width) + w_in;
-                            max_val = std::max(max_val, input[in_idx]);
-                        }
-                    }
-                }
-                int out_idx = (c * out_spatial) + (h_out * out_width) + w_out;
-                output[out_idx] = max_val;
-            }
-        }
-    }
-}
-
-void add_bias(
-    float* data, const float* biases,
-    int channels, int height, int width)
-{
-    const size_t spatial_dim = height * width;
-    for (int c = 0; c < channels; ++c) {
-        float b = biases[c];
-        for (size_t i = 0; i < spatial_dim; ++i) {
-            data[c * spatial_dim + i] += b;
-        }
-    }
-}
-
-/****************************************************************************************************************************/
-
-// 3. Blocked GEMM Vectorized (e32m8)
 void gemm_blocked_e32m8(const float* A, const float* B, float* C,
                         int M, int N, int K,
                         int BM, int BN, int BK) {
@@ -162,15 +68,15 @@ void gemm_blocked_e32m8(const float* A, const float* B, float* C,
                     size_t j = 0;
                     size_t current_bn = j_max - j0;
                     while (j < current_bn) {
-                        size_t vl = __riscv_vsetvl_e32m8(current_bn - j);
-                        vfloat32m8_t v_acc = __riscv_vle32_v_f32m8(&c_row_ptr[j], vl);
+                        size_t vl = SET_VECTOR_LENGTH<float, M8>(current_bn - j);
+                        vfloat32m8_t v_acc = VECTOR_LOAD<float, M8>(&c_row_ptr[j], vl);
                         for (int k = k0; k < k_max; ++k) {
                             float a_val = A[i * K + k];
                             const float* b_row_ptr = &B[k * N + j0 + j];
-                            vfloat32m8_t v_b = __riscv_vle32_v_f32m8(b_row_ptr, vl);
-                            v_acc = __riscv_vfmacc_vf_f32m8(v_acc, a_val, v_b, vl);
+                            vfloat32m8_t v_b = VECTOR_LOAD<float, M8>(b_row_ptr, vl);
+                            v_acc = VECTOR_FMACC<float, M8>(v_acc, a_val, v_b, vl);
                         }
-                        __riscv_vse32_v_f32m8(&c_row_ptr[j], v_acc, vl);
+                        VECTOR_STORE<float, M8>(&c_row_ptr[j], v_acc, vl);
                         j += vl;
                     }
                 }
@@ -179,9 +85,6 @@ void gemm_blocked_e32m8(const float* A, const float* B, float* C,
     }
 }
 
-// Vectorized Im2Col: Transforms Image -> Matrix efficiently
-// Concept: Instead of picking pixels 1-by-1, we copy 'vl' pixels 
-// from the image row to the matrix row in one instruction.
 void im2col_e32m8(const float* data_im, float* data_col,
                   int channels, int height, int width,
                   int kernel_h, int kernel_w,
@@ -192,58 +95,38 @@ void im2col_e32m8(const float* data_im, float* data_col,
     int out_width = (width + 2 * pad_w - kernel_w) / stride_w + 1;
     int out_area = out_height * out_width;
 
-    // 1. Iterate over the Kernel Elements (Rows of the output Matrix)
-    //    This matrix has (channels * kh * kw) rows.
     for (int c = 0; c < channels; ++c) {
         for (int kh = 0; kh < kernel_h; ++kh) {
             for (int kw = 0; kw < kernel_w; ++kw) {
                 
-                // Calculate the starting row index in the 'data_col' matrix
                 float* col_row_ptr = data_col + (c * kernel_h * kernel_w + kh * kernel_w + kw) * out_area;
 
-                // 2. Iterate over Output Height (Scalar)
                 for (int oh = 0; oh < out_height; ++oh) {
                     
                     int in_h = oh * stride_h - pad_h + kh;
-                    
-                    // Calculate where we are writing in the linear matrix buffer
                     float* dest_ptr = col_row_ptr + (oh * out_width);
 
-                    // Check Row Boundary
                     if (in_h < 0 || in_h >= height) {
-                        // If the input row is invalid (padding), fill this segment with Zeros
-                        // We vectorize the Zero-filling!
                         for (int ow = 0; ow < out_width; ) {
-                            size_t vl = __riscv_vsetvl_e32m8(out_width - ow);
-                            vfloat32m8_t v_zero = __riscv_vfmv_v_f_f32m8(0.0f, vl);
-                            __riscv_vse32_v_f32m8(dest_ptr + ow, v_zero, vl);
+                            size_t vl = SET_VECTOR_LENGTH<float, M8>(out_width - ow);
+                            vfloat32m8_t v_zero = VECTOR_BROADCAST<float, M8>(0.0f, vl);
+                            VECTOR_STORE<float, M8>(dest_ptr + ow, v_zero, vl);
                             ow += vl;
                         }
                     } else {
-                        // Valid Row: Vectorize the copy of Output Width (ow)
                         for (int ow = 0; ow < out_width; ) {
-                            size_t vl = __riscv_vsetvl_e32m8(out_width - ow);
+                            size_t vl = SET_VECTOR_LENGTH<float, M8>(out_width - ow);
                             int in_w = ow * stride_w - pad_w + kw;
-
-                            // POINTER MATH:
-                            // We need to load 'vl' pixels starting from &data_im[...]
-                            // If stride_w == 1, we use Unit-Stride Load (Fastest)
-                            // If stride_w > 1, we use Strided Load (Slower)
                             
                             const float* src_ptr = data_im + (c * height * width) + (in_h * width) + in_w;
-
-                            // MASKING for Left/Right Padding
-                            // If the vector load crosses the image boundary (left or right), we must mask.
-                            // For raw speed on Ara, if we assume padded input or valid region, we skip masking.
-                            // rigorous version: use vmseq to mask out-of-bound in_w.
                             
                             if (stride_w == 1) {
-                                vfloat32m8_t v_data = __riscv_vle32_v_f32m8(src_ptr, vl);
-                                __riscv_vse32_v_f32m8(dest_ptr + ow, v_data, vl);
+                                vfloat32m8_t v_data = VECTOR_LOAD<float, M8>(src_ptr, vl);
+                                VECTOR_STORE<float, M8>(dest_ptr + ow, v_data, vl);
                             } else {
                                 ptrdiff_t s_stride = stride_w * sizeof(float);
-                                vfloat32m8_t v_data = __riscv_vlse32_v_f32m8(src_ptr, s_stride, vl);
-                                __riscv_vse32_v_f32m8(dest_ptr + ow, v_data, vl);
+                                vfloat32m8_t v_data = VECTOR_STRIDED_LOAD<float, M8>(src_ptr, s_stride, vl);
+                                VECTOR_STORE<float, M8>(dest_ptr + ow, v_data, vl);
                             }
 
                             ow += vl;
@@ -264,30 +147,20 @@ void conv2d_im2col_gemm_m8(
     int pad_h, int pad_w, int stride_h, int stride_w,
     int has_bias) {
 
-    // 1. Setup Dimensions
     int out_h = (input_h + 2 * pad_h - kernel_h) / stride_h + 1;
     int out_w = (input_w + 2 * pad_w - kernel_w) / stride_w + 1;
     
-    // GEMM Dimensions
     int M = out_channels;
     int K = in_channels * kernel_h * kernel_w;
     int N = out_h * out_w;
     
-    // 2. Vectorized Im2Col (M8)
-    // We use the external col_buf provided by main()
     im2col_e32m8(input, col_buf,
                  in_channels, input_h, input_w, 
                  kernel_h, kernel_w, pad_h, pad_w, stride_h, stride_w);
 
-    // 3. Blocked GEMM (M8)
-    // Results go into gemm_buf first (to handle scaling/bias later) or directly to output
-    // Since we need to add bias, let's write to gemm_buf first.
-    // Note: Tuning the block sizes (BM=4, BN=16, BK=32) is key for performance.
-    // You can try (32, 32, 32) or (8, 64, 16) depending on the exact Ara config.
-    gemm_blocked_e32m8(kernel, col_buf, gemm_buf, M, N, K, 8, 64, 32); 
+    gemm_blocked_e32m8(kernel, col_buf, gemm_buf, M, N, K, 
+                       GEMM_BLOCK_M, GEMM_BLOCK_N, GEMM_BLOCK_K); 
 
-    // 4. Vectorized Bias Add (M8) & Store to Output
-    // If has_bias is 0, this essentially just copies gemm_buf to output
     for (int m = 0; m < M; ++m) {
         float b_val = has_bias ? bias[m] : 0.0f;
         
@@ -296,17 +169,193 @@ void conv2d_im2col_gemm_m8(
         
         size_t n = 0;
         while (n < N) {
-            size_t vl = __riscv_vsetvl_e32m8(N - n);
+            size_t vl = SET_VECTOR_LENGTH<float, M8>(N - n);
             
-            vfloat32m8_t v_data = __riscv_vle32_v_f32m8(&src_ptr[n], vl);
+            vfloat32m8_t v_data = VECTOR_LOAD<float, M8>(&src_ptr[n], vl);
             
-            // Only add bias if it exists, otherwise just move data
             if (has_bias) {
-                v_data = __riscv_vfadd_vf_f32m8(v_data, b_val, vl);
+                v_data = VECTOR_ADD<float, M8>(v_data, b_val, vl);
             }
             
-            __riscv_vse32_v_f32m8(&dst_ptr[n], v_data, vl);
+            VECTOR_STORE<float, M8>(&dst_ptr[n], v_data, vl);
             n += vl;
         }
     }
 }
+
+/************************************ Bias Add ************************************/
+void bias_add_e32m8(const float* input, const float* bias, float* output,
+                       size_t channels, size_t channel_size) {
+    
+    const float* in_ptr  = input;
+    float* out_ptr       = output;
+
+    for (size_t c = 0; c < channels; ++c) {
+        float b_val = bias[c]; 
+        size_t cnt = channel_size;
+        
+        while (cnt > 0) {
+            size_t vl = SET_VECTOR_LENGTH<float, M8>(cnt);
+            
+            auto v_input = VECTOR_LOAD<float, M8>(in_ptr, vl);
+            auto v_output = VECTOR_ADD<float, M8>(v_input, b_val, vl);
+            VECTOR_STORE<float, M8>(out_ptr, v_output, vl);
+            
+            in_ptr  += vl;
+            out_ptr += vl;
+            cnt     -= vl;
+        }
+    }
+}
+
+/************************************ Batch Norm ************************************/
+void batch_norm_e32m8(const float* input, float* output, const float* scale, const float* bias, const float* mean, const float* variance, int channels, int height, int width, float epsilon) {
+    int spatial_dim = height * width;
+    for (int c = 0; c < channels; ++c) {
+        float alpha = scale[c] / std::sqrt(variance[c] + epsilon);
+        float beta = bias[c] - mean[c] * alpha;
+        const float* in_ptr = input + c * spatial_dim;
+        float* out_ptr = output + c * spatial_dim;
+        for (size_t i = 0; i < (size_t)spatial_dim; ) {
+            size_t vl = SET_VECTOR_LENGTH<float, M8>(spatial_dim - i);
+            auto v = VECTOR_LOAD<float, M8>(in_ptr + i, vl);
+            v = VECTOR_ADD<float, M8>(VECTOR_MUL<float, M8>(v, alpha, vl), beta, vl);
+            VECTOR_STORE<float, M8>(out_ptr + i, v, vl);
+            i += vl;
+        }
+    }
+}
+
+/************************************ Maxpool ************************************/
+void maxpool_e32m8(const float* input, float* output,
+                           int batch, int channels,
+                           int in_h, int in_w,
+                           int k_h, int k_w,
+                           int stride_h, int stride_w,
+                           int pad_h, int pad_w) {
+
+    int out_h = (in_h + 2 * pad_h - k_h) / stride_h + 1;
+    int out_w = (in_w + 2 * pad_w - k_w) / stride_w + 1;
+
+    for (int b = 0; b < batch; ++b) {
+        for (int c = 0; c < channels; ++c) {
+            const float* in_ptr_base = input + (b * channels + c) * in_h * in_w;
+            float* out_ptr_base = output + (b * channels + c) * out_h * out_w;
+
+            for (int oh = 0; oh < out_h; ++oh) {
+                int ih_start = oh * stride_h - pad_h;
+
+                for (int ow = 0; ow < out_w; ) {
+                    size_t vl = SET_VECTOR_LENGTH<float, M8>(out_w - ow);
+                    vfloat32m8_t v_max = VECTOR_BROADCAST<float, M8>(-FLT_MAX, vl);
+
+                    for (int kh = 0; kh < k_h; ++kh) {
+                        int ih = ih_start + kh;
+                        if (ih < 0 || ih >= in_h) continue;
+
+                        for (int kw = 0; kw < k_w; ++kw) {
+                            // Calculate current input width for this vector segment
+                            int iw_base = ow * stride_w - pad_w + kw;
+                            
+                            // Note: For a production library, you could use a mask here 
+                            // to handle pixels that fall into 'pad_w' areas.
+                            // For simplicity/speed, we assume standard padding.
+                            const float* load_addr = in_ptr_base + ih * in_w + iw_base;
+
+                            vfloat32m8_t v_in;
+                            if (stride_w == 1) {
+                                v_in = VECTOR_LOAD<float, M8>(load_addr, vl);
+                            } else {
+                                v_in = VECTOR_STRIDED_LOAD<float, M8>(load_addr, stride_w * sizeof(float), vl);
+                            }
+                            v_max = VECTOR_MAX<float, M8>(v_max, v_in, vl);
+                        }
+                    }
+                    VECTOR_STORE<float, M8>(out_ptr_base + oh * out_w + ow, v_max, vl);
+                    ow += vl;
+                }
+            }
+        }
+    }
+}
+
+
+void maxpool_e32m8_fixed(const float* input, float* output,
+                         int batch, int channels,
+                         int in_h, int in_w,
+                         int out_h, int out_w,
+                         int k_h, int k_w,
+                         int stride_h, int stride_w,
+                         int pad_h, int pad_w) {
+
+    for (int b = 0; b < batch; ++b) {
+        for (int c = 0; c < channels; ++c) {
+            const float* in_ptr_base = input + (b * channels + c) * in_h * in_w;
+            float* out_ptr_base = output + (b * channels + c) * out_h * out_w;
+
+            for (int oh = 0; oh < out_h; ++oh) {
+                int ih_start = oh * stride_h - pad_h;
+                float* out_row = out_ptr_base + oh * out_w;
+
+                int ow = 0;
+                // Fast scalar path (stride=1 fallback logic)
+                for (; ow <= out_w - 4; ow += 4) {
+                    float m0 = -FLT_MAX, m1 = -FLT_MAX, m2 = -FLT_MAX, m3 = -FLT_MAX;
+                    for (int kh = 0; kh < k_h; ++kh) {
+                        int ih = ih_start + kh;
+                        if (ih >= 0 && ih < in_h) {
+                            const float* in_line = in_ptr_base + ih * in_w;
+                            for (int kw = 0; kw < k_w; ++kw) {
+                                int iw0 = ow * stride_w - pad_w + kw;
+                                // We check each iw independently to mirror your working kernel
+                                if (iw0 >= 0 && iw0 < in_w) m0 = std::max(m0, in_line[iw0]);
+                                if (iw0 + 1 >= 0 && iw0 + 1 < in_w) m1 = std::max(m1, in_line[iw0 + 1]);
+                                if (iw0 + 2 >= 0 && iw0 + 2 < in_w) m2 = std::max(m2, in_line[iw0 + 2]);
+                                if (iw0 + 3 >= 0 && iw0 + 3 < in_w) m3 = std::max(m3, in_line[iw0 + 3]);
+                            }
+                        }
+                    }
+                    out_row[ow] = m0; out_row[ow+1] = m1; out_row[ow+2] = m2; out_row[ow+3] = m3;
+                }
+                // Tail
+                for (; ow < out_w; ++ow) {
+                    float m = -FLT_MAX;
+                    for (int kh = 0; kh < k_h; ++kh) {
+                        int ih = ih_start + kh;
+                        if (ih >= 0 && ih < in_h) {
+                            const float* in_line = in_ptr_base + ih * in_w;
+                            for (int kw = 0; kw < k_w; ++kw) {
+                                int iw = ow * stride_w - pad_w + kw;
+                                if (iw >= 0 && iw < in_w) m = std::max(m, in_line[iw]);
+                            }
+                        }
+                    }
+                    out_row[ow] = m;
+                }
+            }
+        }
+    }
+}
+
+
+/************************************ LeakyRelu ************************************/
+void leaky_relu_e32m8(const float* src, float* dest, size_t n, float alpha) {
+	size_t vl = SET_VECTOR_LENGTH<float, M8>(n);
+	while (n >= vl * 2) {
+		auto v0 = VECTOR_LOAD<float, M8>(src + vl*0, vl);
+		auto v1 = VECTOR_LOAD<float, M8>(src + vl*1, vl);
+
+		VECTOR_STORE<float, M8>(dest + vl*0, VECTOR_MUL_MASKED<float, M8>(__riscv_vmflt_vf_f32m8_b4(v0, 0.0f, vl), v0, alpha, vl), vl);
+		VECTOR_STORE<float, M8>(dest + vl*1, VECTOR_MUL_MASKED<float, M8>(__riscv_vmflt_vf_f32m8_b4(v1, 0.0f, vl), v1, alpha, vl), vl);
+
+		src += vl * 2; dest += vl * 2; n -= vl * 2;
+	}
+	while (n > 0) {
+		vl = SET_VECTOR_LENGTH<float, M8>(n);
+		auto v = VECTOR_LOAD<float, M8>(src, vl);
+		VECTOR_STORE<float, M8>(dest, VECTOR_MUL_MASKED<float, M8>(__riscv_vmflt_vf_f32m8_b4(v, 0.0f, vl), v, alpha, vl), vl);
+		src += vl; dest += vl; n -= vl;
+	}
+}
+
+

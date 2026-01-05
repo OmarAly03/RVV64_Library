@@ -1,16 +1,13 @@
-// model.cpp
 #include "yolo_model.hpp"
 #include "kernels.hpp"
-#include <opencv2/opencv.hpp> // For BoundingBox::get_rect() and IOU
 
-// --- 1. Post-processing functions (copied from our previous example) ---
-// We make them static so they are private to this file.
+// --- 1. Post-processing functions 
 
 static inline float sigmoid(float x) {
     return 1.0f / (1.0f + std::exp(-x));
 }
 
-// MODIFIED: Operates on a raw pointer and size
+// Operates on a raw pointer and size
 static inline void softmax(float* x, size_t size) {
     if (size == 0) return;
     float max_val = *std::max_element(x, x + size);
@@ -24,28 +21,48 @@ static inline void softmax(float* x, size_t size) {
     }
 }
 
-// BoundingBox::get_rect() needs cv::Rect
-static cv::Rect get_rect(const BoundingBox& box) {
+// Simple rectangle structure to replace cv::Rect
+struct SimpleRect {
+    float x, y, width, height;
+    
+    float area() const {
+        return width * height;
+    }
+    
+    // Intersection with another rectangle
+    SimpleRect intersect(const SimpleRect& other) const {
+        float x1 = std::max(x, other.x);
+        float y1 = std::max(y, other.y);
+        float x2 = std::min(x + width, other.x + other.width);
+        float y2 = std::min(y + height, other.y + other.height);
+        
+        if (x2 <= x1 || y2 <= y1) {
+            return {0, 0, 0, 0}; // No intersection
+        }
+        return {x1, y1, x2 - x1, y2 - y1};
+    }
+};
+
+// Replace cv::Rect with SimpleRect
+static SimpleRect get_rect(const BoundingBox& box) {
     float x_min = box.x - box.w / 2.0f;
     float y_min = box.y - box.h / 2.0f;
-    float x_max = box.x + box.w / 2.0f;
-    float y_max = box.y + box.h / 2.0f;
-    return cv::Rect(cv::Point((int)x_min, (int)y_min), cv::Point((int)x_max, (int)y_max));
+    return {x_min, y_min, box.w, box.h};
 }
 
 static float iou(const BoundingBox& box1, const BoundingBox& box2) {
-    cv::Rect rect1 = get_rect(box1);
-    cv::Rect rect2 = get_rect(box2);
+    SimpleRect rect1 = get_rect(box1);
+    SimpleRect rect2 = get_rect(box2);
 
-    cv::Rect intersection = rect1 & rect2;
-    float inter_area = (float)intersection.area();
-    float union_area = (float)rect1.area() + (float)rect2.area() - inter_area;
+    SimpleRect intersection = rect1.intersect(rect2);
+    float inter_area = intersection.area();
+    float union_area = rect1.area() + rect2.area() - inter_area;
 
     if (union_area <= 0.0f) return 0.0f;
     return inter_area / union_area;
 }
 
-// MODIFIED: Uses C-style array for class_scores
+// Processing class_scores
 static std::vector<BoundingBox> decode_output(const float* net_output, const std::vector<std::vector<float>>& anchors) {
     std::vector<BoundingBox> boxes;
     for (int y = 0; y < GRID_H; ++y) {
@@ -124,8 +141,7 @@ std::vector<BoundingBox> yolo_model_inference(
 {
     // --- 1. Setup Buffers ---
     // We use two "ping-pong" buffers for activations
-    // MODIFIED: Allocate buffers ONCE and re-use them.
-    // This is the single most important change for embedded performance.
+    // Allocate buffers ONCE and re-use them.
     
     // Max size for buf_a (ping) is 692,224 (from Layer 1: 16*208*208)
     // We get this by finding the max size of all `buf_a.resize` calls
@@ -133,7 +149,6 @@ std::vector<BoundingBox> yolo_model_inference(
     // Max size for buf_b (pong) is 2,777,088 (from Layer 0: 16*416*416)
     const size_t buf_b_max_size = 2777088; 
 
-    // Use 'static' to allocate in static data segment, not stack/heap per call
     static std::vector<float> buf_a(buf_a_max_size);
     static std::vector<float> buf_b(buf_b_max_size);
 
@@ -141,7 +156,7 @@ std::vector<BoundingBox> yolo_model_inference(
     float* out_ptr;
 
     // --- 2. Preprocessing ---
-    // MODIFIED: Copy input image data into our static buffer
+    // Copy input image data into our static buffer
     if(input_image.size() > buf_a.size()) {
         std::cerr << "Error: Input image size is larger than buffer." << std::endl;
         return {};
@@ -149,105 +164,109 @@ std::vector<BoundingBox> yolo_model_inference(
     std::copy(input_image.begin(), input_image.end(), buf_a.begin());
     
     preprocess_image(buf_a.data(), w.pp_scale.data(), w.pp_bias.data(), 3, 416, 416);
-    in_ptr = buf_a.data(); // Input for next layer
+    in_ptr = buf_a.data(); 
     
     // --- 3. Model Body ---
-    // ALL .resize() calls are removed.
-    // ALL kernel calls now use .data() for weights.
-    // ALL leaky_relu calls use explicit sizes.
 
     // Layer 0: Conv(16) -> BN -> Leaky
     out_ptr = buf_b.data();
     conv2d(in_ptr, out_ptr, w.conv0_w.data(), 3, 416, 416, 16, 416, 416, 3, 1, 1, 1);
-    batch_normalization(out_ptr, w.bn0_s.data(), w.bn0_b.data(), w.bn0_m.data(), w.bn0_v.data(), 16, 416, 416);
-    leaky_relu(out_ptr, 16 * 416 * 416, 0.1f);
+    batch_norm_e32m8(out_ptr, out_ptr, w.bn0_s.data(), w.bn0_b.data(), w.bn0_m.data(), w.bn0_v.data(), 16, 416, 416, 1e-5f);
+    leaky_relu_e32m8(out_ptr, out_ptr, 16 * 416 * 416, 0.1f);
     in_ptr = buf_b.data();
 
     // Layer 1: MaxPool(k=2, s=2)
     out_ptr = buf_a.data();
-    max_pool_2d(in_ptr, out_ptr, 16, 416, 416, 208, 208, 2, 2, 0, 0);
+	maxpool_e32m8(in_ptr, out_ptr, 1, 16, 416, 416, 2, 2, 2, 2, 0, 0);
     in_ptr = buf_a.data();
 
     // Layer 2: Conv(32) -> BN -> Leaky
     out_ptr = buf_b.data();
     conv2d(in_ptr, out_ptr, w.conv1_w.data(), 16, 208, 208, 32, 208, 208, 3, 1, 1, 1);
-    batch_normalization(out_ptr, w.bn1_s.data(), w.bn1_b.data(), w.bn1_m.data(), w.bn1_v.data(), 32, 208, 208);
-    leaky_relu(out_ptr, 32 * 208 * 208, 0.1f);
+    batch_norm_e32m8(out_ptr, out_ptr, w.bn1_s.data(), w.bn1_b.data(), w.bn1_m.data(), w.bn1_v.data(), 32, 208, 208, 1e-5f);
+    leaky_relu_e32m8(out_ptr, out_ptr, 32 * 208 * 208, 0.1f);
     in_ptr = buf_b.data();
 
     // Layer 3: MaxPool(k=2, s=2)
     out_ptr = buf_a.data();
-    max_pool_2d(in_ptr, out_ptr, 32, 208, 208, 104, 104, 2, 2, 0, 0);
+	maxpool_e32m8(in_ptr, out_ptr, 1, 32, 208, 208, 2, 2, 2, 2, 0, 0);
     in_ptr = buf_a.data();
 
     // Layer 4: Conv(64) -> BN -> Leaky
     out_ptr = buf_b.data();
     conv2d(in_ptr, out_ptr, w.conv2_w.data(), 32, 104, 104, 64, 104, 104, 3, 1, 1, 1);
-    batch_normalization(out_ptr, w.bn2_s.data(), w.bn2_b.data(), w.bn2_m.data(), w.bn2_v.data(), 64, 104, 104);
-    leaky_relu(out_ptr, 64 * 104 * 104, 0.1f);
+    batch_norm_e32m8(out_ptr, out_ptr, w.bn2_s.data(), w.bn2_b.data(), w.bn2_m.data(), w.bn2_v.data(), 64, 104, 104, 1e-5f);
+    leaky_relu_e32m8(out_ptr, out_ptr, 64 * 104 * 104, 0.1f);
     in_ptr = buf_b.data();
 
     // Layer 5: MaxPool(k=2, s=2)
     out_ptr = buf_a.data();
-    max_pool_2d(in_ptr, out_ptr, 64, 104, 104, 52, 52, 2, 2, 0, 0);
+	maxpool_e32m8(in_ptr, out_ptr, 1, 64, 104, 104, 2, 2, 2, 2, 0, 0);
     in_ptr = buf_a.data();
 
     // Layer 6: Conv(128) -> BN -> Leaky
     out_ptr = buf_b.data();
     conv2d(in_ptr, out_ptr, w.conv3_w.data(), 64, 52, 52, 128, 52, 52, 3, 1, 1, 1);
-    batch_normalization(out_ptr, w.bn3_s.data(), w.bn3_b.data(), w.bn3_m.data(), w.bn3_v.data(), 128, 52, 52);
-    leaky_relu(out_ptr, 128 * 52 * 52, 0.1f);
+    batch_norm_e32m8(out_ptr, out_ptr, w.bn3_s.data(), w.bn3_b.data(), w.bn3_m.data(), w.bn3_v.data(), 128, 52, 52, 1e-5f);
+    leaky_relu_e32m8(out_ptr, out_ptr, 128 * 52 * 52, 0.1f);
     in_ptr = buf_b.data();
 
     // Layer 7: MaxPool(k=2, s=2)
     out_ptr = buf_a.data();
-    max_pool_2d(in_ptr, out_ptr, 128, 52, 52, 26, 26, 2, 2, 0, 0);
+	maxpool_e32m8(in_ptr, out_ptr, 1, 128, 52, 52, 2, 2, 2, 2, 0, 0);
     in_ptr = buf_a.data();
 
     // Layer 8: Conv(256) -> BN -> Leaky
     out_ptr = buf_b.data();
     conv2d(in_ptr, out_ptr, w.conv4_w.data(), 128, 26, 26, 256, 26, 26, 3, 1, 1, 1);
-    batch_normalization(out_ptr, w.bn4_s.data(), w.bn4_b.data(), w.bn4_m.data(), w.bn4_v.data(), 256, 26, 26);
-    leaky_relu(out_ptr, 256 * 26 * 26, 0.1f);
+    batch_norm_e32m8(out_ptr, out_ptr, w.bn4_s.data(), w.bn4_b.data(), w.bn4_m.data(), w.bn4_v.data(), 256, 26, 26, 1e-5f);
+    leaky_relu_e32m8(out_ptr, out_ptr, 256 * 26 * 26, 0.1f);
     in_ptr = buf_b.data();
 
     // Layer 9: MaxPool(k=2, s=2)
     out_ptr = buf_a.data();
-    max_pool_2d(in_ptr, out_ptr, 256, 26, 26, 13, 13, 2, 2, 0, 0);
+	maxpool_e32m8(in_ptr, out_ptr, 1, 256, 26, 26, 2, 2, 2, 2, 0, 0);
     in_ptr = buf_a.data();
 
     // Layer 10: Conv(512) -> BN -> Leaky
     out_ptr = buf_b.data();
     conv2d(in_ptr, out_ptr, w.conv5_w.data(), 256, 13, 13, 512, 13, 13, 3, 1, 1, 1);
-    batch_normalization(out_ptr, w.bn5_s.data(), w.bn5_b.data(), w.bn5_m.data(), w.bn5_v.data(), 512, 13, 13);
-    leaky_relu(out_ptr, 512 * 13 * 13, 0.1f);
+    batch_norm_e32m8(out_ptr, out_ptr, w.bn5_s.data(), w.bn5_b.data(), w.bn5_m.data(), w.bn5_v.data(), 512, 13, 13, 1e-5f);
+    leaky_relu_e32m8(out_ptr, out_ptr, 512 * 13 * 13, 0.1f);
     in_ptr = buf_b.data();
 
-    // Layer 11: MaxPool(k=2, s=1, p=1) -- NOTE THE PADDING
+    // Layer 11: MaxPool(k=2, s=1, p=0)
     out_ptr = buf_a.data();
-    max_pool_2d(in_ptr, out_ptr, 512, 13, 13, 13, 13, 2, 1, 0, 0);
-    in_ptr = buf_a.data();
+	maxpool_e32m8_fixed(
+		in_ptr, out_ptr, 
+		1, 512,      
+		13, 13,      
+		13, 13,     
+		2, 2,        
+		1, 1,        
+		0, 0         
+	);
+	in_ptr = buf_a.data();
 
     // Layer 12: Conv(1024) -> BN -> Leaky
     out_ptr = buf_b.data();
     conv2d(in_ptr, out_ptr, w.conv6_w.data(), 512, 13, 13, 1024, 13, 13, 3, 1, 1, 1);
-    batch_normalization(out_ptr, w.bn6_s.data(), w.bn6_b.data(), w.bn6_m.data(), w.bn6_v.data(), 1024, 13, 13);
-    leaky_relu(out_ptr, 1024 * 13 * 13, 0.1f);
+    batch_norm_e32m8(out_ptr, out_ptr, w.bn6_s.data(), w.bn6_b.data(), w.bn6_m.data(), w.bn6_v.data(), 1024, 13, 13, 1e-5f);
+    leaky_relu_e32m8(out_ptr, out_ptr, 1024 * 13 * 13, 0.1f);
     in_ptr = buf_b.data();
 
     // Layer 13: Conv(1024) -> BN -> Leaky
     out_ptr = buf_a.data();
     conv2d(in_ptr, out_ptr, w.conv7_w.data(), 1024, 13, 13, 1024, 13, 13, 3, 1, 1, 1);
-    batch_normalization(out_ptr, w.bn7_s.data(), w.bn7_b.data(), w.bn7_m.data(), w.bn7_v.data(), 1024, 13, 13);
-    leaky_relu(out_ptr, 1024 * 13 * 13, 0.1f); // Fixed size
+    batch_norm_e32m8(out_ptr, out_ptr, w.bn7_s.data(), w.bn7_b.data(), w.bn7_m.data(), w.bn7_v.data(), 1024, 13, 13, 1e-5f);
+    leaky_relu_e32m8(out_ptr, out_ptr, 1024 * 13 * 13, 0.1f);
     in_ptr = buf_a.data();
 
     // Layer 14: Final Conv(125) + Bias
     out_ptr = buf_b.data();
     conv2d(in_ptr, out_ptr, w.conv8_w.data(), 1024, 13, 13, 125, 13, 13, 1, 1, 0, 0);
-    add_bias(out_ptr, w.conv8_b.data(), 125, 13, 13);
-    
-    // out_ptr (pointing to buf_b) now holds the final (125, 13, 13) grid
+	size_t channel_size = 13 * 13;
+    bias_add_e32m8(out_ptr, w.conv8_b.data(), out_ptr, 125, channel_size);
 
     // --- 4. Post-processing ---
     // NOTE: These functions STILL use std::vector.
@@ -255,9 +274,7 @@ std::vector<BoundingBox> yolo_model_inference(
     return non_max_suppression(boxes);
 }
 
-
 // --- 3. Weight Loading Function ---
-// (No changes needed for this part, as loading happens once)
 
 void load_all_weights(ModelWeights& w, const std::string& weight_dir) {
     std::cout << "Loading weights from " << weight_dir << "..." << std::endl;
@@ -271,8 +288,6 @@ void load_all_weights(ModelWeights& w, const std::string& weight_dir) {
     w.bn0_b = load_weights_from_bin(weight_dir + "BatchNormalization_B.bin", 16);
     w.bn0_m = load_weights_from_bin(weight_dir + "BatchNormalization_mean.bin", 16);
     w.bn0_v = load_weights_from_bin(weight_dir + "BatchNormalization_variance.bin", 16);
-
-    // ... (rest of the loading function is identical) ...
 
     // Layer 1
     w.conv1_w = load_weights_from_bin(weight_dir + "convolution1_W.bin", 32*16*3*3);
