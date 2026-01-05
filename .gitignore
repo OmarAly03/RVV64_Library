@@ -2,6 +2,7 @@
 **/__pycache__/
 **/output_files/*
 !**/output_files/.gitkeep
+models/tiny-yolov2/model_parameters/*.bin
 
 # Ignore Python virtual environments
 .venv/
