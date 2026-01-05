@@ -107,9 +107,60 @@ int main(int argc, char* argv[]) {
                  N, Cin, Cout, H, W, kH, kW, sH, sW, pH, pW);
     write_matrix_binary("./output_files/c_e32m8.bin", out_buf, static_cast<size_t>(out_size));
 
-    delete[] input;
-    delete[] kernel;
-    delete[] out_buf;
+	// Calculate buffer sizes for im2col_gemm
+	int col_buf_size = Cin * kH * kW * outH * outW;  // im2col buffer
+	int gemm_buf_size = out_size;  // temporary output buffer
 
-    return 0;
+	// Allocate buffers for im2col_gemm
+	float* col_buf = new float[col_buf_size];
+	float* gemm_buf = new float[gemm_buf_size];
+	float* bias = new float[Cout];  // bias vector
+
+	if (!col_buf || !gemm_buf || !bias) {
+		cerr << "Buffer allocation failed for im2col_gemm" << endl;
+		delete[] input;
+		delete[] kernel;
+		delete[] out_buf;
+		return 1;
+	}
+
+	// Initialize bias (zero for fair comparison)
+	for (int i = 0; i < Cout; ++i) {
+		bias[i] = 0.0f;
+	}
+
+	// Add debug prints before im2col call
+	cout << "Debug: N=" << N << " Cin=" << Cin << " Cout=" << Cout << endl;
+	cout << "Debug: H=" << H << " W=" << W << " kH=" << kH << " kW=" << kW << endl;
+	cout << "Debug: pH=" << pH << " pW=" << pW << " sH=" << sH << " sW=" << sW << endl;
+	cout << "Debug: outH=" << outH << " outW=" << outW << endl;
+	cout << "Debug: col_buf_size=" << col_buf_size << " gemm_buf_size=" << gemm_buf_size << endl;
+
+	// Print first few input values
+	cout << "First 5 input values: ";
+	for(int i = 0; i < 5; ++i) cout << input[i] << " ";
+	cout << endl;
+
+	// Print first few kernel values  
+	cout << "First 5 kernel values: ";
+	for(int i = 0; i < 5; ++i) cout << kernel[i] << " ";
+	cout << endl;
+
+	// Call im2col_gemm implementation
+	conv2d_im2col_gemm_m8(input, kernel, bias, out_buf,
+						col_buf, gemm_buf,
+						Cin, H, W, Cout, kH, kW,
+						pH, pW, sH, sW, 0);  // has_bias = 0 for fair comparison
+	write_matrix_binary("./output_files/c_im2col_gemm_m8.bin", out_buf, static_cast<size_t>(out_size));
+
+	// Cleanup buffers
+	delete[] col_buf;
+	delete[] gemm_buf;
+	delete[] bias;
+
+	delete[] input;
+	delete[] kernel;
+	delete[] out_buf;
+
+	return 0;
 }

@@ -1,11 +1,11 @@
-git CC = riscv64-unknown-linux-gnu-g++
+CC = riscv64-unknown-linux-gnu-g++
 FLAGS = -march=rv64gcv -static
 
 # Include directories
-INCLUDES = -Iinclude -I../lib
+INCLUDES = -Iinclude -I../../lib
 
 # Source files
-SRCS = run_conv2d.cpp src/conv2d_rvv.cpp src/conv2d_scalar.cpp src/utils.cpp
+SRCS = run_conv2d.cpp src/rvv_conv2d.cpp src/utils.cpp
 
 # Output binary
 TARGET = ./output_files/run_conv2d

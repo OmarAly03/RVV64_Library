@@ -124,6 +124,7 @@ def run():
     c_e32m2 = load("c_e32m2.bin")
     c_e32m4 = load("c_e32m4.bin")
     c_e32m8 = load("c_e32m8.bin")
+    c_im2col_gemm_m8 = load("c_im2col_gemm_m8.bin")
 
     # Results table
     implementations = [
@@ -133,6 +134,7 @@ def run():
         ("C Vectorized (e32m2)", c_e32m2),
         ("C Vectorized (e32m4)", c_e32m4),
         ("C Vectorized (e32m8)", c_e32m8),
+        ("C Im2Col+GEMM (m8)", c_im2col_gemm_m8),
     ]
 
     print(f"\nConv2D: N={N} Cin={Cin} Cout={Cout} HxW={H}x{W} k={kH}x{kW} stride=({sH},{sW}) pad=({pH},{pW})")
