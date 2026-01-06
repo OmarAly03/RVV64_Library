@@ -11,7 +11,7 @@ SRCS = run_conv2d.cpp src/rvv_conv2d.cpp src/utils.cpp
 TARGET = ./output_files/run_conv2d
 
 # Optional runtime args (N Cin Cout H W kH kW sH sW pH pW)
-SIZE ?=
+SIZE ?= 
 
 $(TARGET): $(SRCS)
 	@$(CC) $(FLAGS) $(INCLUDES) -o $@ $^

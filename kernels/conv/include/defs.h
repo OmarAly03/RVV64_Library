@@ -89,6 +89,15 @@ void conv2d_im2col_gemm_m8(
     int pad_h, int pad_w, int stride_h, int stride_w,
     int has_bias);
 
+	void conv2d(
+		const float* input, float* output, const float* weights,
+		int batch,
+		int in_channels, int in_height, int in_width,
+		int out_channels,
+		int kernel_h, int kernel_w,
+		int stride_h, int stride_w,
+		int pad_h, int pad_w);
+
 // 3x3 specialized RVV functions
 void conv2d_3x3_m1(
     const float* input, const float* kernel, float* output,

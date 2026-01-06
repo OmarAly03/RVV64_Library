@@ -101,355 +101,253 @@ void conv2d_scalar(
 }
 
 /********************************* General Vectorized Versions *********************************/
+#define MAX_WEIGHT_SIZE 65536
+static float packed_w[MAX_WEIGHT_SIZE];
 
 // RVV optimized 2D convolution (e32m1)
 void conv2d_e32m1(
-    const float* input, const float* kernel, float* output,
-    int batch_size, int in_channels, int out_channels,
-    int input_h, int input_w, int kernel_h, int kernel_w,
-    int stride_h, int stride_w, int pad_h, int pad_w) {
-    
-    // Calculate output dimensions
-    int out_height = (input_h + 2 * pad_h - kernel_h) / stride_h + 1;
-    int out_width = (input_w + 2 * pad_w - kernel_w) / stride_w + 1;
-    
-    // Initialize output to zero
-    size_t output_size = batch_size * out_channels * out_height * out_width;
-    std::memset(output, 0, output_size * sizeof(float));
-    
-    for (int b = 0; b < batch_size; ++b) {
-        for (int oc = 0; oc < out_channels; ++oc) {
-            for (int oh = 0; oh < out_height; ++oh) {
-                for (int ow = 0; ow < out_width; ++ow) {
-                    
-                    // Calculate input region bounds
-                    int in_h_start = oh * stride_h - pad_h;
-                    int in_w_start = ow * stride_w - pad_w;
-                    int in_h_end = in_h_start + kernel_h;
-                    int in_w_end = in_w_start + kernel_w;
-                    
-                    float sum = 0.0f;
-                    
-                    for (int ic = 0; ic < in_channels; ++ic) {
-                        for (int kh = 0; kh < kernel_h; ++kh) {
-                            int in_h = in_h_start + kh;
-                            
-                            // Skip if outside input bounds
-                            if (in_h < 0 || in_h >= input_h) {
-                                continue;
-                            }
-                            
-                            int kw = 0;
-                            int in_w = in_w_start;
-                            
-                            // Skip negative width indices
-                            while (kw < kernel_w && in_w + kw < 0) {
-                                kw++;
-                            }
-                            
-                            size_t vl;
-                            for (; kw < kernel_w; kw += vl) {
-                                int remaining = kernel_w - kw;
-                                int valid_end = input_w - in_w - kw;
-                                int processable = std::min(remaining, valid_end);
-                                
-                                if (processable <= 0) break;
-                                
-                                vl = SET_VECTOR_LENGTH<float, M1>(processable);
+	const float* input, const float* kernel, float* output,
+	int batch_size, int in_channels, int out_channels,
+	int input_h, int input_w, int kernel_h, int kernel_w,
+	int stride_h, int stride_w, int pad_h, int pad_w) {
+	
+	int out_h = (input_h + 2 * pad_h - kernel_h) / stride_h + 1;
+	int out_w = (input_w + 2 * pad_w - kernel_w) / stride_w + 1;
+	int out_area = out_h * out_w;
+	int in_area = input_h * input_w;
+	int kernel_spatial = kernel_h * kernel_w;
 
-                                // Load input and kernel vectors using wrappers
-                                vfloat32m1_t v_input = VECTOR_LOAD<float, M1>(
-                                    &input[b * in_channels * input_h * input_w +
-                                           ic * input_h * input_w +
-                                           in_h * input_w + in_w + kw], vl);
+	for (int ic = 0; ic < in_channels; ++ic) {
+		for (int k = 0; k < kernel_spatial; ++k) {
+			for (int oc = 0; oc < out_channels; ++oc) {
+				packed_w[(ic * kernel_spatial + k) * out_channels + oc] = 
+					kernel[oc * (in_channels * kernel_spatial) + ic * kernel_spatial + k];
+			}
+		}
+	}
 
-                                vfloat32m1_t v_kernel = VECTOR_LOAD<float, M1>(
-                                    &kernel[oc * in_channels * kernel_h * kernel_w +
-                                           ic * kernel_h * kernel_w +
-                                           kh * kernel_w + kw], vl);
+	std::memset(output, 0, batch_size * out_channels * out_area * sizeof(float));
 
-                                // Element-wise multiply
-                                vfloat32m1_t v_mult = VECTOR_MUL_VV<float, M1>(v_input, v_kernel, vl);
+	for (int b = 0; b < batch_size; ++b) {
+		for (int oc = 0; oc < out_channels; ) {
+			size_t vl = SET_VECTOR_LENGTH<float, M1>(out_channels - oc);
+			for (int oh = 0; oh < out_h; ++oh) {
+				int ih_base = oh * stride_h - pad_h;
+				for (int ow = 0; ow < out_w; ++ow) {
+					int iw_base = ow * stride_w - pad_w;
+					float* out_ptr = &output[b * out_channels * out_area + oc * out_area + oh * out_w + ow];
+					vfloat32m1_t v_acc = VECTOR_STRIDED_LOAD<float, M1>(out_ptr, out_area * sizeof(float), vl);
 
-                                // Reduce sum horizontally
-                                vfloat32m1_t v_zero = VECTOR_BROADCAST<float, M1>(0.0f, 1);
-                                vfloat32m1_t v_sum = VECTOR_VFREDSUM<float, M1>(v_mult, v_zero, vl);
-
-                                // Extract scalar sum and add to total
-                                sum += VECTOR_EXTRACT_SCALAR<float, M1>(v_sum);
-                            }
-                        }
-                    }
-                    
-                    // Store the accumulated result
-                    output[b * out_channels * out_height * out_width +
-                           oc * out_height * out_width +
-                           oh * out_width + ow] = sum;
-                }
-            }
-        }
-    }
+					for (int ic = 0; ic < in_channels; ++ic) {
+						const float* w_ic_base = &packed_w[(ic * kernel_spatial) * out_channels + oc];
+						for (int kh = 0; kh < kernel_h; ++kh) {
+							int ih = ih_base + kh;
+							if (ih < 0 || ih >= input_h) continue;
+							for (int kw = 0; kw < kernel_w; ++kw) {
+								int iw = iw_base + kw;
+								if (iw < 0 || iw >= input_w) continue;
+								float scalar_in = input[b * in_channels * in_area + ic * in_area + ih * input_w + iw];
+								vfloat32m1_t v_w = VECTOR_LOAD<float, M1>(w_ic_base + (kh * kernel_w + kw) * out_channels, vl);
+								v_acc = VECTOR_FMACC_VF<float, M1>(v_acc, scalar_in, v_w, vl);
+							}
+						}
+					}
+					VECTOR_STRIDED_STORE<float, M1>(out_ptr, out_area * sizeof(float), v_acc, vl);
+				}
+			}
+			oc += vl;
+		}
+	}
 }
 
-// RVV optimized 2D convolution (e32m2)
 void conv2d_e32m2(
-    const float* input, const float* kernel, float* output,
-    int batch_size, int in_channels, int out_channels,
-    int input_h, int input_w, int kernel_h, int kernel_w,
-    int stride_h, int stride_w, int pad_h, int pad_w) {
-    
-    // Calculate output dimensions
-    int out_height = (input_h + 2 * pad_h - kernel_h) / stride_h + 1;
-    int out_width = (input_w + 2 * pad_w - kernel_w) / stride_w + 1;
-    
-    // Initialize output to zero
-    size_t output_size = batch_size * out_channels * out_height * out_width;
-    std::memset(output, 0, output_size * sizeof(float));
-    
-    for (int b = 0; b < batch_size; ++b) {
-        for (int oc = 0; oc < out_channels; ++oc) {
-            for (int oh = 0; oh < out_height; ++oh) {
-                for (int ow = 0; ow < out_width; ++ow) {
-                    
-                    // Calculate input region bounds
-                    int in_h_start = oh * stride_h - pad_h;
-                    int in_w_start = ow * stride_w - pad_w;
-                    
-                    float sum = 0.0f;
-                    
-                    for (int ic = 0; ic < in_channels; ++ic) {
-                        for (int kh = 0; kh < kernel_h; ++kh) {
-                            int in_h = in_h_start + kh;
-                            
-                            // Skip if outside input bounds
-                            if (in_h < 0 || in_h >= input_h) {
-                                continue;
-                            }
-                            
-                            int kw = 0;
-                            int in_w = in_w_start;
-                            
-                            // Skip negative width indices
-                            while (kw < kernel_w && in_w + kw < 0) {
-                                kw++;
-                            }
-                            
-                            size_t vl;
-                            for (; kw < kernel_w; kw += vl) {
-                                int remaining = kernel_w - kw;
-                                int valid_end = input_w - in_w - kw;
-                                int processable = std::min(remaining, valid_end);
-                                
-                                if (processable <= 0) break;
-                                
-                                vl = SET_VECTOR_LENGTH<float, M2>(processable);
+	const float* input, const float* kernel, float* output,
+	int batch_size, int in_channels, int out_channels,
+	int input_h, int input_w, int kernel_h, int kernel_w,
+	int stride_h, int stride_w, int pad_h, int pad_w) {
+	
+	int out_h = (input_h + 2 * pad_h - kernel_h) / stride_h + 1;
+	int out_w = (input_w + 2 * pad_w - kernel_w) / stride_w + 1;
+	int out_area = out_h * out_w;
+	int in_area = input_h * input_w;
+	int kernel_spatial = kernel_h * kernel_w;
 
-                                // Load input and kernel vectors using wrappers
-                                vfloat32m2_t v_input = VECTOR_LOAD<float, M2>(
-                                    &input[b * in_channels * input_h * input_w +
-                                           ic * input_h * input_w +
-                                           in_h * input_w + in_w + kw], vl);
 
-                                vfloat32m2_t v_kernel = VECTOR_LOAD<float, M2>(
-                                    &kernel[oc * in_channels * kernel_h * kernel_w +
-                                           ic * kernel_h * kernel_w +
-                                           kh * kernel_w + kw], vl);
+	// Weight Packing: [OC][IC][KH][KW] -> [IC][KH][KW][OC]
+	for (int ic = 0; ic < in_channels; ++ic) {
+		for (int k = 0; k < kernel_spatial; ++k) {
+			for (int oc = 0; oc < out_channels; ++oc) {
+				packed_w[(ic * kernel_spatial + k) * out_channels + oc] = 
+					kernel[oc * (in_channels * kernel_spatial) + ic * kernel_spatial + k];
+			}
+		}
+	}
 
-                                // Element-wise multiply
-                                vfloat32m2_t v_mult = VECTOR_MUL_VV<float, M2>(v_input, v_kernel, vl);
+	// Initialize output to zero using standard std::memset
+	std::memset(output, 0, batch_size * out_channels * out_area * sizeof(float));
 
-                                // Reduce sum horizontally
-                                vfloat32m1_t v_zero = VECTOR_BROADCAST<float, M1>(0.0f, 1);
-                                vfloat32m1_t v_sum = VECTOR_VFREDSUM<float, M2>(v_mult, v_zero, vl);
+	for (int b = 0; b < batch_size; ++b) {
+		const float* in_batch_base = &input[b * in_channels * in_area];
+		float* out_batch_base = &output[b * out_channels * out_area];
 
-                                // Extract scalar sum and add to total
-                                sum += VECTOR_EXTRACT_SCALAR<float, M1>(v_sum);
-                            }
-                        }
-                    }
-                    
-                    // Store the accumulated result
-                    output[b * out_channels * out_height * out_width +
-                           oc * out_height * out_width +
-                           oh * out_width + ow] = sum;
-                }
-            }
-        }
-    }
+		for (int oc = 0; oc < out_channels; ) {
+			// Ara VLEN=1024, NR_LANES=4. M2 is safe and efficient.
+			size_t vl = SET_VECTOR_LENGTH<float, M2>(out_channels - oc);
+
+			for (int oh = 0; oh < out_h; ++oh) {
+				int ih_base = oh * stride_h - pad_h;
+				for (int ow = 0; ow < out_w; ++ow) {
+					
+					int iw_base = ow * stride_w - pad_w;
+					float* out_ptr = out_batch_base + oc * out_area + oh * out_w + ow;
+					
+					// Load current output (0.0)
+					vfloat32m2_t v_acc = VECTOR_STRIDED_LOAD<float, M2>(out_ptr, out_area * sizeof(float), vl);
+
+					for (int ic = 0; ic < in_channels; ++ic) {
+						const float* in_chan_ptr = in_batch_base + ic * in_area;
+						const float* w_ic_base = &packed_w[(ic * kernel_spatial) * out_channels + oc];
+
+						for (int kh = 0; kh < kernel_h; ++kh) {
+							int ih = ih_base + kh;
+							if (ih < 0 || ih >= input_h) continue;
+
+							for (int kw = 0; kw < kernel_w; ++kw) {
+								int iw = iw_base + kw;
+								if (iw < 0 || iw >= input_w) continue;
+
+								float scalar_in = in_chan_ptr[ih * input_w + iw];
+								
+								// UNIT-STRIDE LOAD: This is the speed boost
+								const float* w_ptr = w_ic_base + (kh * kernel_w + kw) * out_channels;
+								vfloat32m2_t v_weight = VECTOR_LOAD<float, M2>(w_ptr, vl);
+
+								v_acc = VECTOR_FMACC_VF<float, M2>(v_acc, scalar_in, v_weight, vl);
+							}
+						}
+					}
+					// Final Store back to NCHW
+					VECTOR_STRIDED_STORE<float, M2>(out_ptr, out_area * sizeof(float), v_acc, vl);
+				}
+			}
+			oc += vl;
+		}
+	}
 }
 
-// RVV optimized 2D convolution (e32m4)
+
 void conv2d_e32m4(
-    const float* input, const float* kernel, float* output,
-    int batch_size, int in_channels, int out_channels,
-    int input_h, int input_w, int kernel_h, int kernel_w,
-    int stride_h, int stride_w, int pad_h, int pad_w) {
-    
-    // Calculate output dimensions
-    int out_height = (input_h + 2 * pad_h - kernel_h) / stride_h + 1;
-    int out_width = (input_w + 2 * pad_w - kernel_w) / stride_w + 1;
-    
-    // Initialize output to zero
-    size_t output_size = batch_size * out_channels * out_height * out_width;
-    std::memset(output, 0, output_size * sizeof(float));
-    
-    for (int b = 0; b < batch_size; ++b) {
-        for (int oc = 0; oc < out_channels; ++oc) {
-            for (int oh = 0; oh < out_height; ++oh) {
-                for (int ow = 0; ow < out_width; ++ow) {
-                    
-                    // Calculate input region bounds
-                    int in_h_start = oh * stride_h - pad_h;
-                    int in_w_start = ow * stride_w - pad_w;
-                    
-                    float sum = 0.0f;
-                    
-                    for (int ic = 0; ic < in_channels; ++ic) {
-                        for (int kh = 0; kh < kernel_h; ++kh) {
-                            int in_h = in_h_start + kh;
-                            
-                            // Skip if outside input bounds
-                            if (in_h < 0 || in_h >= input_h) {
-                                continue;
-                            }
-                            
-                            int kw = 0;
-                            int in_w = in_w_start;
-                            
-                            // Skip negative width indices
-                            while (kw < kernel_w && in_w + kw < 0) {
-                                kw++;
-                            }
-                            
-                            size_t vl;
-                            for (; kw < kernel_w; kw += vl) {
-                                int remaining = kernel_w - kw;
-                                int valid_end = input_w - in_w - kw;
-                                int processable = std::min(remaining, valid_end);
-                                
-                                if (processable <= 0) break;
-                                
-                                vl = SET_VECTOR_LENGTH<float, M4>(processable);
+	const float* input, const float* kernel, float* output,
+	int batch_size, int in_channels, int out_channels,
+	int input_h, int input_w, int kernel_h, int kernel_w,
+	int stride_h, int stride_w, int pad_h, int pad_w) {
+	
+	int out_h = (input_h + 2 * pad_h - kernel_h) / stride_h + 1;
+	int out_w = (input_w + 2 * pad_w - kernel_w) / stride_w + 1;
+	int out_area = out_h * out_w;
+	int in_area = input_h * input_w;
+	int kernel_spatial = kernel_h * kernel_w;
 
-                                // Load input and kernel vectors using wrappers
-                                vfloat32m4_t v_input = VECTOR_LOAD<float, M4>(
-                                    &input[b * in_channels * input_h * input_w +
-                                           ic * input_h * input_w +
-                                           in_h * input_w + in_w + kw], vl);
+	// Weight packing logic remains identical to M1...
+	for (int ic = 0; ic < in_channels; ++ic) {
+		for (int k = 0; k < kernel_spatial; ++k) {
+			for (int oc = 0; oc < out_channels; ++oc) {
+				packed_w[(ic * kernel_spatial + k) * out_channels + oc] = 
+					kernel[oc * (in_channels * kernel_spatial) + ic * kernel_spatial + k];
+			}
+		}
+	}
 
-                                vfloat32m4_t v_kernel = VECTOR_LOAD<float, M4>(
-                                    &kernel[oc * in_channels * kernel_h * kernel_w +
-                                           ic * kernel_h * kernel_w +
-                                           kh * kernel_w + kw], vl);
+	std::memset(output, 0, batch_size * out_channels * out_area * sizeof(float));
 
-                                // Element-wise multiply
-                                vfloat32m4_t v_mult = VECTOR_MUL_VV<float, M4>(v_input, v_kernel, vl);
+	for (int b = 0; b < batch_size; ++b) {
+		for (int oc = 0; oc < out_channels; ) {
+			size_t vl = SET_VECTOR_LENGTH<float, M4>(out_channels - oc);
+			for (int oh = 0; oh < out_h; ++oh) {
+				int ih_base = oh * stride_h - pad_h;
+				for (int ow = 0; ow < out_w; ++ow) {
+					int iw_base = ow * stride_w - pad_w;
+					float* out_ptr = &output[b * out_channels * out_area + oc * out_area + oh * out_w + ow];
+					
+					vfloat32m4_t v_acc = VECTOR_STRIDED_LOAD<float, M4>(out_ptr, out_area * sizeof(float), vl);
 
-                                // Reduce sum horizontally
-                                vfloat32m1_t v_zero = VECTOR_BROADCAST<float, M1>(0.0f, 1);
-                                vfloat32m1_t v_sum = VECTOR_VFREDSUM<float, M4>(v_mult, v_zero, vl);
-
-                                // Extract scalar sum and add to total
-                                sum += VECTOR_EXTRACT_SCALAR<float, M1>(v_sum);
-                            }
-                        }
-                    }
-                    
-                    // Store the accumulated result
-                    output[b * out_channels * out_height * out_width +
-                           oc * out_height * out_width +
-                           oh * out_width + ow] = sum;
-                }
-            }
-        }
-    }
+					for (int ic = 0; ic < in_channels; ++ic) {
+						const float* w_ic_base = &packed_w[(ic * kernel_spatial) * out_channels + oc];
+						for (int kh = 0; kh < kernel_h; ++kh) {
+							int ih = ih_base + kh;
+							if (ih < 0 || ih >= input_h) continue;
+							for (int kw = 0; kw < kernel_w; ++kw) {
+								int iw = iw_base + kw;
+								if (iw < 0 || iw >= input_w) continue;
+								float scalar_in = input[b * in_channels * in_area + ic * in_area + ih * input_w + iw];
+								vfloat32m4_t v_w = VECTOR_LOAD<float, M4>(w_ic_base + (kh * kernel_w + kw) * out_channels, vl);
+								v_acc = VECTOR_FMACC_VF<float, M4>(v_acc, scalar_in, v_w, vl);
+							}
+						}
+					}
+					VECTOR_STRIDED_STORE<float, M4>(out_ptr, out_area * sizeof(float), v_acc, vl);
+				}
+			}
+			oc += vl;
+		}
+	}
 }
 
-// RVV optimized 2D convolution (e32m8)
 void conv2d_e32m8(
-    const float* input, const float* kernel, float* output,
-    int batch_size, int in_channels, int out_channels,
-    int input_h, int input_w, int kernel_h, int kernel_w,
-    int stride_h, int stride_w, int pad_h, int pad_w) {
-    
-    // Calculate output dimensions
-    int out_height = (input_h + 2 * pad_h - kernel_h) / stride_h + 1;
-    int out_width = (input_w + 2 * pad_w - kernel_w) / stride_w + 1;
-    
-    // Initialize output to zero
-    size_t output_size = batch_size * out_channels * out_height * out_width;
-    std::memset(output, 0, output_size * sizeof(float));
-    
-    for (int b = 0; b < batch_size; ++b) {
-        for (int oc = 0; oc < out_channels; ++oc) {
-            for (int oh = 0; oh < out_height; ++oh) {
-                for (int ow = 0; ow < out_width; ++ow) {
-                    
-                    // Calculate input region bounds
-                    int in_h_start = oh * stride_h - pad_h;
-                    int in_w_start = ow * stride_w - pad_w;
-                    
-                    float sum = 0.0f;
-                    
-                    for (int ic = 0; ic < in_channels; ++ic) {
-                        for (int kh = 0; kh < kernel_h; ++kh) {
-                            int in_h = in_h_start + kh;
-                            
-                            // Skip if outside input bounds
-                            if (in_h < 0 || in_h >= input_h) {
-                                continue;
-                            }
-                            
-                            int kw = 0;
-                            int in_w = in_w_start;
-                            
-                            // Skip negative width indices
-                            while (kw < kernel_w && in_w + kw < 0) {
-                                kw++;
-                            }
-                            
-                            size_t vl;
-                            for (; kw < kernel_w; kw += vl) {
-                                int remaining = kernel_w - kw;
-                                int valid_end = input_w - in_w - kw;
-                                int processable = std::min(remaining, valid_end);
-                                
-                                if (processable <= 0) break;
-                                
-                                vl = SET_VECTOR_LENGTH<float, M8>(processable);
+	const float* input, const float* kernel, float* output,
+	int batch_size, int in_channels, int out_channels,
+	int input_h, int input_w, int kernel_h, int kernel_w,
+	int stride_h, int stride_w, int pad_h, int pad_w) {
+	
+	int out_h = (input_h + 2 * pad_h - kernel_h) / stride_h + 1;
+	int out_w = (input_w + 2 * pad_w - kernel_w) / stride_w + 1;
+	int out_area = out_h * out_w;
+	int in_area = input_h * input_w;
+	int kernel_spatial = kernel_h * kernel_w;
 
-                                // Load input and kernel vectors using wrappers
-                                vfloat32m8_t v_input = VECTOR_LOAD<float, M8>(
-                                    &input[b * in_channels * input_h * input_w +
-                                           ic * input_h * input_w +
-                                           in_h * input_w + in_w + kw], vl);
+	// Weight packing logic...
+	for (int ic = 0; ic < in_channels; ++ic) {
+		for (int k = 0; k < kernel_spatial; ++k) {
+			for (int oc = 0; oc < out_channels; ++oc) {
+				packed_w[(ic * kernel_spatial + k) * out_channels + oc] = 
+					kernel[oc * (in_channels * kernel_spatial) + ic * kernel_spatial + k];
+			}
+		}
+	}
 
-                                vfloat32m8_t v_kernel = VECTOR_LOAD<float, M8>(
-                                    &kernel[oc * in_channels * kernel_h * kernel_w +
-                                           ic * kernel_h * kernel_w +
-                                           kh * kernel_w + kw], vl);
+	std::memset(output, 0, batch_size * out_channels * out_area * sizeof(float));
 
-                                // Element-wise multiply
-                                vfloat32m8_t v_mult = VECTOR_MUL_VV<float, M8>(v_input, v_kernel, vl);
+	for (int b = 0; b < batch_size; ++b) {
+		for (int oc = 0; oc < out_channels; ) {
+			size_t vl = SET_VECTOR_LENGTH<float, M8>(out_channels - oc);
+			for (int oh = 0; oh < out_h; ++oh) {
+				int ih_base = oh * stride_h - pad_h;
+				for (int ow = 0; ow < out_w; ++ow) {
+					int iw_base = ow * stride_w - pad_w;
+					float* out_ptr = &output[b * out_channels * out_area + oc * out_area + oh * out_w + ow];
+					
+					vfloat32m8_t v_acc = VECTOR_STRIDED_LOAD<float, M8>(out_ptr, out_area * sizeof(float), vl);
 
-                                // Reduce sum horizontally
-                                vfloat32m1_t v_zero = VECTOR_BROADCAST<float, M1>(0.0f, 1);
-                                vfloat32m1_t v_sum = VECTOR_VFREDSUM<float, M8>(v_mult, v_zero, vl);
-
-                                // Extract scalar sum and add to total
-                                sum += VECTOR_EXTRACT_SCALAR<float, M1>(v_sum);
-                            }
-                        }
-                    }
-                    
-                    // Store the accumulated result
-                    output[b * out_channels * out_height * out_width +
-                           oc * out_height * out_width +
-                           oh * out_width + ow] = sum;
-                }
-            }
-        }
-    }
+					for (int ic = 0; ic < in_channels; ++ic) {
+						const float* w_ic_base = &packed_w[(ic * kernel_spatial) * out_channels + oc];
+						for (int kh = 0; kh < kernel_h; ++kh) {
+							int ih = ih_base + kh;
+							if (ih < 0 || ih >= input_h) continue;
+							for (int kw = 0; kw < kernel_w; ++kw) {
+								int iw = iw_base + kw;
+								if (iw < 0 || iw >= input_w) continue;
+								float scalar_in = input[b * in_channels * in_area + ic * in_area + ih * input_w + iw];
+								vfloat32m8_t v_w = VECTOR_LOAD<float, M8>(w_ic_base + (kh * kernel_w + kw) * out_channels, vl);
+								v_acc = VECTOR_FMACC_VF<float, M8>(v_acc, scalar_in, v_w, vl);
+							}
+						}
+					}
+					VECTOR_STRIDED_STORE<float, M8>(out_ptr, out_area * sizeof(float), v_acc, vl);
+				}
+			}
+			oc += vl;
+		}
+	}
 }
 
 /********************************* ARA-Specific im2col-gemm Vectorized Versions*********************************/
@@ -473,7 +371,7 @@ void im2col_scalar(const float* input,
 
     int N = out_h * out_w;
     int K = C * kernel_h * kernel_w;
-    memset(col, 0, K * N * sizeof(float));
+    std::memset(col, 0, K * N * sizeof(float));
 
     for (int c = 0; c < C; ++c) {
         for (int kh = 0; kh < kernel_h; ++kh) {
@@ -498,7 +396,7 @@ void im2col_scalar(const float* input,
 void gemm_blocked_scalar(const float* A, const float* B, float* C,
                          int M, int N, int K,
                          int BM, int BN, int BK) {
-    memset(C, 0, M * N * sizeof(float));
+    std::memset(C, 0, M * N * sizeof(float));
     for (int i0 = 0; i0 < M; i0 += BM) {
         int i_max = MIN(M, i0 + BM);
         for (int k0 = 0; k0 < K; k0 += BK) {
@@ -520,115 +418,6 @@ void gemm_blocked_scalar(const float* A, const float* B, float* C,
     }
 }
 
-// 3. Blocked GEMM Vectorized (e32m8)
-void gemm_blocked_e32m8(const float* A, const float* B, float* C,
-                        int M, int N, int K,
-                        int BM, int BN, int BK) {
-    memset(C, 0, M * N * sizeof(float));
-    for (int i0 = 0; i0 < M; i0 += BM) {
-        int i_max = MIN(M, i0 + BM);
-        for (int k0 = 0; k0 < K; k0 += BK) {
-            int k_max = MIN(K, k0 + BK);
-            for (int j0 = 0; j0 < N; j0 += BN) {
-                int j_max = MIN(N, j0 + BN);
-                for (int i = i0; i < i_max; ++i) {
-                    float* c_row_ptr = &C[i * N + j0];
-                    size_t j = 0;
-                    size_t current_bn = j_max - j0;
-                    while (j < current_bn) {
-                        size_t vl = SET_VECTOR_LENGTH<float, M8>(current_bn - j);
-                        vfloat32m8_t v_acc = VECTOR_LOAD<float, M8>(&c_row_ptr[j], vl);
-                        for (int k = k0; k < k_max; ++k) {
-                            float a_val = A[i * K + k];
-                            const float* b_row_ptr = &B[k * N + j0 + j];
-                            vfloat32m8_t v_b = VECTOR_LOAD<float, M8>(b_row_ptr, vl);
-                            v_acc = VECTOR_FMACC_VF<float, M8>(v_acc, a_val, v_b, vl);
-                        }
-                        VECTOR_STORE<float, M8>(&c_row_ptr[j], v_acc, vl);
-                        j += vl;
-                    }
-                }
-            }
-        }
-    }
-}
-
-
-// Vectorized Im2Col: Transforms Image -> Matrix efficiently
-// Concept: Instead of picking pixels 1-by-1, we copy 'vl' pixels 
-// from the image row to the matrix row in one instruction.
-void im2col_e32m8(const float* data_im, float* data_col,
-                  int channels, int height, int width,
-                  int kernel_h, int kernel_w,
-                  int pad_h, int pad_w,
-                  int stride_h, int stride_w) {
-    
-    int out_height = (height + 2 * pad_h - kernel_h) / stride_h + 1;
-    int out_width = (width + 2 * pad_w - kernel_w) / stride_w + 1;
-    int out_area = out_height * out_width;
-
-    // 1. Iterate over the Kernel Elements (Rows of the output Matrix)
-    //    This matrix has (channels * kh * kw) rows.
-    for (int c = 0; c < channels; ++c) {
-        for (int kh = 0; kh < kernel_h; ++kh) {
-            for (int kw = 0; kw < kernel_w; ++kw) {
-                
-                // Calculate the starting row index in the 'data_col' matrix
-                float* col_row_ptr = data_col + (c * kernel_h * kernel_w + kh * kernel_w + kw) * out_area;
-
-                // 2. Iterate over Output Height (Scalar)
-                for (int oh = 0; oh < out_height; ++oh) {
-                    
-                    int in_h = oh * stride_h - pad_h + kh;
-                    
-                    // Calculate where we are writing in the linear matrix buffer
-                    float* dest_ptr = col_row_ptr + (oh * out_width);
-
-                    // Check Row Boundary
-                    if (in_h < 0 || in_h >= height) {
-                        // If the input row is invalid (padding), fill this segment with Zeros
-                        // We vectorize the Zero-filling!
-                        for (int ow = 0; ow < out_width; ) {
-                            size_t vl = SET_VECTOR_LENGTH<float, M8>(out_width - ow);
-                            vfloat32m8_t v_zero = VECTOR_BROADCAST<float, M8>(0.0f, vl);
-                            VECTOR_STORE<float, M8>(dest_ptr + ow, v_zero, vl);
-                            ow += vl;
-                        }
-                    } else {
-                        // Valid Row: Vectorize the copy of Output Width (ow)
-                        for (int ow = 0; ow < out_width; ) {
-                            size_t vl = SET_VECTOR_LENGTH<float, M8>(out_width - ow);
-                            int in_w = ow * stride_w - pad_w + kw;
-
-                            // POINTER MATH:
-                            // We need to load 'vl' pixels starting from &data_im[...]
-                            // If stride_w == 1, we use Unit-Stride Load (Fastest)
-                            // If stride_w > 1, we use Strided Load (Slower)
-                            
-                            const float* src_ptr = data_im + (c * height * width) + (in_h * width) + in_w;
-
-                            // MASKING for Left/Right Padding
-                            // If the vector load crosses the image boundary (left or right), we must mask.
-                            // For raw speed on Ara, if we assume padded input or valid region, we skip masking.
-                            // rigorous version: use vmseq to mask out-of-bound in_w.
-                            
-                            if (stride_w == 1) {
-                                vfloat32m8_t v_data = VECTOR_LOAD<float, M8>(src_ptr, vl);
-                                VECTOR_STORE<float, M8>(dest_ptr + ow, v_data, vl);
-                            } else {
-                                ptrdiff_t s_stride = stride_w * sizeof(float);
-                                vfloat32m8_t v_data = VECTOR_STRIDED_LOAD<float, M8>(src_ptr, s_stride, vl);
-                                VECTOR_STORE<float, M8>(dest_ptr + ow, v_data, vl);
-                            }
-
-                            ow += vl;
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
 
 // =========================================================
 // PART 1: SCALAR
@@ -702,6 +491,99 @@ void conv2d_im2col_gemm_vector(
 // PART 3: FULLY VECTORIZED
 // =========================================================
 
+void im2col_e32m8(
+    const float* data_im,
+    float* data_col,
+    int channels,
+    int height,
+    int width,
+    int kernel_h,
+    int kernel_w,
+    int pad_h,
+    int pad_w,
+    int stride_h,
+    int stride_w)
+{
+    const int out_height =
+        (height + 2 * pad_h - kernel_h) / stride_h + 1;
+    const int out_width =
+        (width + 2 * pad_w - kernel_w) / stride_w + 1;
+    const int out_area = out_height * out_width;
+
+    for (int c = 0; c < channels; ++c) {
+        const float* im_c = data_im + c * height * width;
+
+        for (int kh = 0; kh < kernel_h; ++kh) {
+            for (int kw = 0; kw < kernel_w; ++kw) {
+
+                const int col_row =
+                    (c * kernel_h * kernel_w) + (kh * kernel_w + kw);
+                float* col_ptr = data_col + col_row * out_area;
+
+                for (int oh = 0; oh < out_height; ++oh) {
+                    const int ih = oh * stride_h - pad_h + kh;
+                    float* dst = col_ptr + oh * out_width;
+
+                    // If height is out of bounds → whole row is zero
+                    if (ih < 0 || ih >= height) {
+                        int ow = 0;
+                        while (ow < out_width) {
+                            size_t vl =
+                                SET_VECTOR_LENGTH<float, M8>(out_width - ow);
+                            vfloat32m8_t vz =
+                                VECTOR_BROADCAST<float, M8>(0.0f, vl);
+                            VECTOR_STORE<float, M8>(dst + ow, vz, vl);
+                            ow += vl;
+                        }
+                        continue;
+                    }
+
+                    // Height valid → check width per element
+                    const float* im_row = im_c + ih * width;
+
+                    int ow = 0;
+                    while (ow < out_width) {
+                        size_t vl =
+                            SET_VECTOR_LENGTH<float, M8>(out_width - ow);
+
+                        int iw0 = ow * stride_w - pad_w + kw;
+
+                        // ---------- FAST PATH ----------
+                        if (stride_w == 1 &&
+                            iw0 >= 0 &&
+                            iw0 + (int)vl <= width) {
+
+                            const float* src = im_row + iw0;
+                            vfloat32m8_t v =
+                                VECTOR_LOAD<float, M8>(src, vl);
+                            VECTOR_STORE<float, M8>(dst + ow, v, vl);
+                        }
+                        // ---------- SAFE PATH ----------
+                        else {
+                            float tmp[256]; // enough for any RVV VL
+
+                            for (size_t i = 0; i < vl; ++i) {
+                                int iw = iw0 + (int)i * stride_w;
+                                if (iw >= 0 && iw < width) {
+                                    tmp[i] = im_row[iw];
+                                } else {
+                                    tmp[i] = 0.0f;
+                                }
+                            }
+
+                            vfloat32m8_t v =
+                                VECTOR_LOAD<float, M8>(tmp, vl);
+                            VECTOR_STORE<float, M8>(dst + ow, v, vl);
+                        }
+
+                        ow += vl;
+                    }
+                }
+            }
+        }
+    }
+}
+
 void conv2d_im2col_gemm_m8(
     const float* input, const float* kernel, const float* bias,
     float* output,
@@ -757,6 +639,74 @@ void conv2d_im2col_gemm_m8(
         }
     }
 }
+
+void gemm_blocked_e32m8(const float* A, const float* B, float* C,
+                        int M, int N, int K,
+                        int BM, int BN, int BK) {
+    std::memset(C, 0, M * N * sizeof(float));
+    for (int i0 = 0; i0 < M; i0 += BM) {
+        int i_max = MIN(M, i0 + BM);
+        for (int k0 = 0; k0 < K; k0 += BK) {
+            int k_max = MIN(K, k0 + BK);
+            for (int j0 = 0; j0 < N; j0 += BN) {
+                int j_max = MIN(N, j0 + BN);
+                for (int i = i0; i < i_max; ++i) {
+                    float* c_row_ptr = &C[i * N + j0];
+                    size_t j = 0;
+                    size_t current_bn = j_max - j0;
+                    while (j < current_bn) {
+                        size_t vl = SET_VECTOR_LENGTH<float, M8>(current_bn - j);
+                        vfloat32m8_t v_acc = VECTOR_LOAD<float, M8>(&c_row_ptr[j], vl);
+                        for (int k = k0; k < k_max; ++k) {
+                            float a_val = A[i * K + k];
+                            const float* b_row_ptr = &B[k * N + j0 + j];
+                            vfloat32m8_t v_b = VECTOR_LOAD<float, M8>(b_row_ptr, vl);
+                            v_acc = VECTOR_FMACC_VF<float, M8>(v_acc, a_val, v_b, vl);
+                        }
+                        VECTOR_STORE<float, M8>(&c_row_ptr[j], v_acc, vl);
+                        j += vl;
+                    }
+                }
+            }
+        }
+    }
+}
+
+void conv2d(
+    const float* input, float* output, const float* weights,
+    int batch,
+    int in_channels, int in_height, int in_width,
+    int out_channels,
+    int kernel_h, int kernel_w,
+    int stride_h, int stride_w,
+    int pad_h, int pad_w)
+{
+    int out_h = (in_height + 2 * pad_h - kernel_h) / stride_h + 1;
+    int out_w = (in_width  + 2 * pad_w - kernel_w) / stride_w + 1;
+
+    int K = in_channels * kernel_h * kernel_w;
+    int N = out_h * out_w;
+
+    float* col_buf  = new float[K * N];
+    float* gemm_buf = new float[out_channels * N];
+
+    for (int n = 0; n < batch; ++n) {
+        const float* in_ptr  = input  + n * in_channels * in_height * in_width;
+        float* out_ptr = output + n * out_channels * out_h * out_w;
+
+        conv2d_im2col_gemm_m8(
+            in_ptr, weights, nullptr, out_ptr,
+            col_buf, gemm_buf,
+            in_channels, in_height, in_width,
+            out_channels, kernel_h, kernel_w,
+            pad_h, pad_w, stride_h, stride_w,
+            0);
+    }
+
+    delete[] col_buf;
+    delete[] gemm_buf;
+}
+
 
 /********************************* 3x3 Filter-Specific Vectorized Versions*********************************/
 
