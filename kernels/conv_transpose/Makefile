@@ -49,7 +49,7 @@ host:
 	@$(HOST_CC) $(HOST_FLAGS) $(INCLUDES) -o $(TARGET) $(HOST_SRCS)
 
 onnx:
-	@python3 create_onnx_model.py $(INPUT_SIZE) $(IN_CHANNELS) $(OUT_CHANNELS) $(STRIDE)
+	@python3 src/onnx_conv2d_transpose.py $(INPUT_SIZE) $(IN_CHANNELS) $(OUT_CHANNELS) $(STRIDE)
 
 frun: $(TARGET) onnx
 	@qemu-riscv64 -cpu rv64,v=true $(TARGET) $(INPUT_SIZE) $(IN_CHANNELS) $(OUT_CHANNELS) $(STRIDE)
