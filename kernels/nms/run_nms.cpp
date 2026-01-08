@@ -1,12 +1,27 @@
-#include <iostream>
-#include <cstdlib>
-#include <chrono>
-#include <random>
-#include <fstream>
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include "./include/defs.h"
 
-using namespace std;
-using namespace std::chrono;
+// Simple random number generator replacement
+static unsigned int g_seed = 42;
+
+static void srand_custom(unsigned int seed) {
+    g_seed = seed;
+}
+
+static float rand_float_range(float min, float max) {
+    g_seed = g_seed * 1103515245 + 12345;
+    return min + ((float)((g_seed / 65536) % 32768)) / 32767.0f * (max - min);
+}
+
+static long long get_time_ns() {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (long long)ts.tv_sec * 1000000000LL + ts.tv_nsec;
+}
 
 int main(int argc, char* argv[]) {
     // --- HANDLE ARGUMENTS ---
@@ -22,14 +37,14 @@ int main(int argc, char* argv[]) {
         int spatial = atoi(argv[3]);
         
         if (batches > 0 && classes > 0 && spatial > 0) {
-            num_batches = static_cast<size_t>(batches);
-            num_classes = static_cast<size_t>(classes);
-            spatial_dimension = static_cast<size_t>(spatial);
+            num_batches = (size_t)batches;
+            num_classes = (size_t)classes;
+            spatial_dimension = (size_t)spatial;
         }
     }
     
     if (argc >= 5) {
-        max_output_boxes_per_class = static_cast<int64_t>(atoi(argv[4]));
+        max_output_boxes_per_class = (int64_t)atoi(argv[4]);
     }
     
     if (argc >= 6) {
@@ -44,26 +59,22 @@ int main(int argc, char* argv[]) {
     size_t boxes_size = num_batches * spatial_dimension * 4;
     size_t scores_size = num_batches * num_classes * spatial_dimension;
     
-    float* boxes = new float[boxes_size];
-    float* scores = new float[scores_size];
+    float* boxes = (float*)malloc(boxes_size * sizeof(float));
+    float* scores = (float*)malloc(scores_size * sizeof(float));
     
     if (!boxes || !scores) {
-        cerr << "Memory allocation failed!" << endl;
+        fprintf(stderr, "Memory allocation failed!\n");
         return 1;
     }
     
     // --- INITIALIZE DATA ---
-    random_device rd;
-    mt19937 gen(42); // Fixed seed for reproducibility
-    uniform_real_distribution<float> coord_dist(0.0f, 100.0f);
-    uniform_real_distribution<float> score_dist(0.0f, 1.0f);
-    uniform_real_distribution<float> size_dist(1.0f, 20.0f);
+    srand_custom(42); // Fixed seed for reproducibility
     
     for (size_t i = 0; i < boxes_size; i += 4) {
-        float y1 = coord_dist(gen);
-        float x1 = coord_dist(gen);
-        float height = size_dist(gen);
-        float width = size_dist(gen);
+        float y1 = rand_float_range(0.0f, 100.0f);
+        float x1 = rand_float_range(0.0f, 100.0f);
+        float height = rand_float_range(1.0f, 20.0f);
+        float width = rand_float_range(1.0f, 20.0f);
         
         boxes[i] = y1;
         boxes[i + 1] = x1;
@@ -72,41 +83,46 @@ int main(int argc, char* argv[]) {
     }
     
     for (size_t i = 0; i < scores_size; i++) {
-        scores[i] = score_dist(gen);
+        scores[i] = rand_float_range(0.0f, 1.0f);
     }
     
     system("mkdir -p ./output_files");
     
-    ofstream boxes_file("./output_files/boxes.bin", ios::binary);
-    boxes_file.write(reinterpret_cast<const char*>(boxes), boxes_size * sizeof(float));
-    boxes_file.close();
+    FILE* boxes_file = fopen("./output_files/boxes.bin", "wb");
+    fwrite(boxes, sizeof(float), boxes_size, boxes_file);
+    fclose(boxes_file);
     
-    ofstream scores_file("./output_files/scores.bin", ios::binary);
-    scores_file.write(reinterpret_cast<const char*>(scores), scores_size * sizeof(float));
-    scores_file.close();
+    FILE* scores_file = fopen("./output_files/scores.bin", "wb");
+    fwrite(scores, sizeof(float), scores_size, scores_file);
+    fclose(scores_file);
     
-    auto result_scalar = nms_scalar(boxes, scores, num_batches, num_classes, spatial_dimension,
+    SelectedIndexVector result_scalar = nms_scalar(boxes, scores, num_batches, num_classes, spatial_dimension,
                                    max_output_boxes_per_class, iou_threshold, score_threshold, center_point_box);
-    write_nms_results_binary("./output_files/nms_scalar.bin", result_scalar);
+    write_nms_results_binary("./output_files/nms_scalar.bin", &result_scalar);
+    free_selected_vector(&result_scalar);
     
-    auto result_m1 = nms_e32m1(boxes, scores, num_batches, num_classes, spatial_dimension,
+    SelectedIndexVector result_m1 = nms_e32m1(boxes, scores, num_batches, num_classes, spatial_dimension,
                                max_output_boxes_per_class, iou_threshold, score_threshold, center_point_box);
-    write_nms_results_binary("./output_files/nms_e32m1.bin", result_m1);
+    write_nms_results_binary("./output_files/nms_e32m1.bin", &result_m1);
+    free_selected_vector(&result_m1);
     
-    auto result_m2 = nms_e32m2(boxes, scores, num_batches, num_classes, spatial_dimension,
+    SelectedIndexVector result_m2 = nms_e32m2(boxes, scores, num_batches, num_classes, spatial_dimension,
                                max_output_boxes_per_class, iou_threshold, score_threshold, center_point_box);
-    write_nms_results_binary("./output_files/nms_e32m2.bin", result_m2);
+    write_nms_results_binary("./output_files/nms_e32m2.bin", &result_m2);
+    free_selected_vector(&result_m2);
     
-    auto result_m4 = nms_e32m4(boxes, scores, num_batches, num_classes, spatial_dimension,
+    SelectedIndexVector result_m4 = nms_e32m4(boxes, scores, num_batches, num_classes, spatial_dimension,
                                max_output_boxes_per_class, iou_threshold, score_threshold, center_point_box);
-    write_nms_results_binary("./output_files/nms_e32m4.bin", result_m4);
+    write_nms_results_binary("./output_files/nms_e32m4.bin", &result_m4);
+    free_selected_vector(&result_m4);
     
-    auto result_m8 = nms_e32m8(boxes, scores, num_batches, num_classes, spatial_dimension,
+    SelectedIndexVector result_m8 = nms_e32m8(boxes, scores, num_batches, num_classes, spatial_dimension,
                                max_output_boxes_per_class, iou_threshold, score_threshold, center_point_box);
-    write_nms_results_binary("./output_files/nms_e32m8.bin", result_m8);
+    write_nms_results_binary("./output_files/nms_e32m8.bin", &result_m8);
+    free_selected_vector(&result_m8);
     
-    delete[] boxes;
-    delete[] scores;
+    free(boxes);
+    free(scores);
     
     return 0;
 }

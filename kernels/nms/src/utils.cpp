@@ -1,13 +1,72 @@
-#include <iostream>
-#include <fstream>
-#include <cmath>
-#include <algorithm>
-#include <vector>
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include <string.h>
 #include <riscv_vector.h>
 #include "../include/defs.h"
-#include "../../lib/rvv_defs.hpp"
+#include "../../../lib/rvv_defs.hpp"
 
-using namespace std;
+// Helper functions for vector management
+void init_selected_vector(SelectedIndexVector* vec) {
+    vec->data = NULL;
+    vec->size = 0;
+    vec->capacity = 0;
+}
+
+void push_selected_index(SelectedIndexVector* vec, SelectedIndex item) {
+    if (vec->size >= vec->capacity) {
+        size_t new_capacity = vec->capacity == 0 ? 8 : vec->capacity * 2;
+        SelectedIndex* new_data = (SelectedIndex*)realloc(vec->data, new_capacity * sizeof(SelectedIndex));
+        if (!new_data) return;
+        vec->data = new_data;
+        vec->capacity = new_capacity;
+    }
+    vec->data[vec->size++] = item;
+}
+
+void free_selected_vector(SelectedIndexVector* vec) {
+    if (vec->data) free(vec->data);
+    vec->data = NULL;
+    vec->size = 0;
+    vec->capacity = 0;
+}
+
+void init_score_vector(ScoreIndexVector* vec) {
+    vec->data = NULL;
+    vec->size = 0;
+    vec->capacity = 0;
+}
+
+void push_score_index(ScoreIndexVector* vec, ScoreIndexPair item) {
+    if (vec->size >= vec->capacity) {
+        size_t new_capacity = vec->capacity == 0 ? 8 : vec->capacity * 2;
+        ScoreIndexPair* new_data = (ScoreIndexPair*)realloc(vec->data, new_capacity * sizeof(ScoreIndexPair));
+        if (!new_data) return;
+        vec->data = new_data;
+        vec->capacity = new_capacity;
+    }
+    vec->data[vec->size++] = item;
+}
+
+void free_score_vector(ScoreIndexVector* vec) {
+    if (vec->data) free(vec->data);
+    vec->data = NULL;
+    vec->size = 0;
+    vec->capacity = 0;
+}
+
+// Comparison function for qsort
+int compare_scores_desc(const void* a, const void* b) {
+    const ScoreIndexPair* pa = (const ScoreIndexPair*)a;
+    const ScoreIndexPair* pb = (const ScoreIndexPair*)b;
+    if (pa->score > pb->score) return -1;
+    if (pa->score < pb->score) return 1;
+    return 0;
+}
+
+// Helper functions for max/min
+static float fmaxf_inline(float a, float b) { return a > b ? a : b; }
+static float fminf_inline(float a, float b) { return a < b ? a : b; }
 
 // Scalar IoU computation
 float compute_iou(const float* box1, const float* box2, int center_point_box) {
@@ -26,14 +85,14 @@ float compute_iou(const float* box1, const float* box2, int center_point_box) {
     float y1_2 = box2[0], x1_2 = box2[1], y2_2 = box2[2], x2_2 = box2[3];
     
     // Compute intersection coordinates
-    float inter_y1 = max(y1_1, y1_2);
-    float inter_x1 = max(x1_1, x1_2);
-    float inter_y2 = min(y2_1, y2_2);
-    float inter_x2 = min(x2_1, x2_2);
+    float inter_y1 = fmaxf_inline(y1_1, y1_2);
+    float inter_x1 = fmaxf_inline(x1_1, x1_2);
+    float inter_y2 = fminf_inline(y2_1, y2_2);
+    float inter_x2 = fminf_inline(x2_1, x2_2);
     
     // Compute intersection area
-    float inter_width = max(0.0f, inter_x2 - inter_x1);
-    float inter_height = max(0.0f, inter_y2 - inter_y1);
+    float inter_width = fmaxf_inline(0.0f, inter_x2 - inter_x1);
+    float inter_height = fmaxf_inline(0.0f, inter_y2 - inter_y1);
     float inter_area = inter_width * inter_height;
     
     // Compute areas of both boxes
@@ -85,34 +144,34 @@ void convert_box_format_rvv(const float* box, float* converted_box, int from_for
     if (from_format == to_format) {
         // No conversion needed - copy with vector load/store
         size_t vl = 4;
-        auto v_box = VECTOR_LOAD<float, M1>(box, vl);
+        vfloat32m1_t v_box = VECTOR_LOAD<float, M1>(box, vl);
         VECTOR_STORE<float, M1>(converted_box, v_box, vl);
         return;
     }
     
     size_t vl = 4;
-    auto v_box = VECTOR_LOAD<float, M1>(box, vl);
+    vfloat32m1_t v_box = VECTOR_LOAD<float, M1>(box, vl);
     
     if (from_format == CENTER_FORMAT && to_format == CORNER_FORMAT) {
         // Convert from [x_center, y_center, width, height] to [y1, x1, y2, x2]
         // Load: [x_center, y_center, width, height]
-        auto x_center = VECTOR_EXTRACT_SCALAR<float, M1>(v_box);
-        auto y_center = VECTOR_EXTRACT_SCALAR<float, M1>(VECTOR_SLIDEDOWN<float, M1>(v_box, 1, vl));
-        auto width = VECTOR_EXTRACT_SCALAR<float, M1>(VECTOR_SLIDEDOWN<float, M1>(v_box, 2, vl));
-        auto height = VECTOR_EXTRACT_SCALAR<float, M1>(VECTOR_SLIDEDOWN<float, M1>(v_box, 3, vl));
+        float x_center = VECTOR_EXTRACT_SCALAR<float, M1>(v_box);
+        float y_center = VECTOR_EXTRACT_SCALAR<float, M1>(VECTOR_SLIDEDOWN<float, M1>(v_box, 1, vl));
+        float width = VECTOR_EXTRACT_SCALAR<float, M1>(VECTOR_SLIDEDOWN<float, M1>(v_box, 2, vl));
+        float height = VECTOR_EXTRACT_SCALAR<float, M1>(VECTOR_SLIDEDOWN<float, M1>(v_box, 3, vl));
         
         // Create vector [width/2, height/2, width/2, height/2]
         float half_dims[4] = {width * 0.5f, height * 0.5f, width * 0.5f, height * 0.5f};
-        auto v_half_dims = VECTOR_LOAD<float, M1>(half_dims, vl);
+        vfloat32m1_t v_half_dims = VECTOR_LOAD<float, M1>(half_dims, vl);
         
         // Create center vector [x_center, y_center, x_center, y_center]
         float centers[4] = {x_center, y_center, x_center, y_center};
-        auto v_centers = VECTOR_LOAD<float, M1>(centers, vl);
+        vfloat32m1_t v_centers = VECTOR_LOAD<float, M1>(centers, vl);
         
         // Compute [x_center - width/2, y_center - height/2, x_center + width/2, y_center + height/2]
         float signs[4] = {-1.0f, -1.0f, 1.0f, 1.0f};
-        auto v_signs = VECTOR_LOAD<float, M1>(signs, vl);
-        auto v_result_temp = VECTOR_FMACC<float, M1>(v_centers, v_half_dims, v_signs, vl);
+        vfloat32m1_t v_signs = VECTOR_LOAD<float, M1>(signs, vl);
+        vfloat32m1_t v_result_temp = VECTOR_FMACC<float, M1>(v_centers, v_half_dims, v_signs, vl);
         
         // Swap to get [y1, x1, y2, x2] from [x1, y1, x2, y2]
         float result_temp[4];
@@ -124,26 +183,26 @@ void convert_box_format_rvv(const float* box, float* converted_box, int from_for
         
     } else if (from_format == CORNER_FORMAT && to_format == CENTER_FORMAT) {
         // Convert from [y1, x1, y2, x2] to [x_center, y_center, width, height]
-        auto y1 = VECTOR_EXTRACT_SCALAR<float, M1>(v_box);
-        auto x1 = VECTOR_EXTRACT_SCALAR<float, M1>(VECTOR_SLIDEDOWN<float, M1>(v_box, 1, vl));
-        auto y2 = VECTOR_EXTRACT_SCALAR<float, M1>(VECTOR_SLIDEDOWN<float, M1>(v_box, 2, vl));
-        auto x2 = VECTOR_EXTRACT_SCALAR<float, M1>(VECTOR_SLIDEDOWN<float, M1>(v_box, 3, vl));
+        float y1 = VECTOR_EXTRACT_SCALAR<float, M1>(v_box);
+        float x1 = VECTOR_EXTRACT_SCALAR<float, M1>(VECTOR_SLIDEDOWN<float, M1>(v_box, 1, vl));
+        float y2 = VECTOR_EXTRACT_SCALAR<float, M1>(VECTOR_SLIDEDOWN<float, M1>(v_box, 2, vl));
+        float x2 = VECTOR_EXTRACT_SCALAR<float, M1>(VECTOR_SLIDEDOWN<float, M1>(v_box, 3, vl));
         
         // Create vectors [x1, y1, x2, y2] and [x2, y2, x1, y1]
         float corners1[4] = {x1, y1, x2, y2};
         float corners2[4] = {x2, y2, x1, y1};
-        auto v_corners1 = VECTOR_LOAD<float, M1>(corners1, vl);
-        auto v_corners2 = VECTOR_LOAD<float, M1>(corners2, vl);
+        vfloat32m1_t v_corners1 = VECTOR_LOAD<float, M1>(corners1, vl);
+        vfloat32m1_t v_corners2 = VECTOR_LOAD<float, M1>(corners2, vl);
         
         // Sum: [x1+x2, y1+y2, x2+x1, y2+y1] (but we only need first two for center)
-        auto v_sum = VECTOR_ADD<float, M1>(v_corners1, v_corners2, vl);
+        vfloat32m1_t v_sum = VECTOR_ADD<float, M1>(v_corners1, v_corners2, vl);
         
         // Difference: [x2-x1, y2-y1, x1-x2, y1-y2] (we only need first two for width/height)
-        auto v_diff = VECTOR_SUB<float, M1>(v_corners2, v_corners1, vl);
+        vfloat32m1_t v_diff = VECTOR_SUB<float, M1>(v_corners2, v_corners1, vl);
         
         // Divide by 2 for centers
-        auto v_half = VECTOR_MOVE<float, M1>(0.5f, vl);
-        auto v_center = VECTOR_MUL<float, M1>(v_sum, v_half, vl);
+        vfloat32m1_t v_half = VECTOR_MOVE<float, M1>(0.5f, vl);
+        vfloat32m1_t v_center = VECTOR_MUL<float, M1>(v_sum, v_half, vl);
         
         // Result: [x_center, y_center, width, height]
         VECTOR_STORE<float, M1>(converted_box, v_center, 2);      // Store centers
@@ -152,13 +211,14 @@ void convert_box_format_rvv(const float* box, float* converted_box, int from_for
 }
 
 // Scalar NMS implementation for reference
-vector<SelectedIndex> nms_scalar(
+SelectedIndexVector nms_scalar(
     const float* boxes, const float* scores,
     size_t num_batches, size_t num_classes, size_t spatial_dimension,
     int64_t max_output_boxes_per_class, float iou_threshold, float score_threshold,
     int center_point_box
 ) {
-    vector<SelectedIndex> selected_indices;
+    SelectedIndexVector selected_indices;
+    init_selected_vector(&selected_indices);
     
     if (max_output_boxes_per_class == 0) {
         return selected_indices;
@@ -167,7 +227,8 @@ vector<SelectedIndex> nms_scalar(
     for (size_t batch = 0; batch < num_batches; batch++) {
         for (size_t cls = 0; cls < num_classes; cls++) {
             // Create vector of (score, index) pairs for current batch and class
-            vector<pair<float, size_t>> score_index_pairs;
+            ScoreIndexVector score_index_pairs;
+            init_score_vector(&score_index_pairs);
             
             // Filter scores above threshold
             for (size_t i = 0; i < spatial_dimension; i++) {
@@ -175,42 +236,44 @@ vector<SelectedIndex> nms_scalar(
                 float score = scores[score_idx];
                 
                 if (score >= score_threshold) {
-                    score_index_pairs.push_back({score, i});
+                    ScoreIndexPair pair = {score, i};
+                    push_score_index(&score_index_pairs, pair);
                 }
             }
             
             // Sort by score in descending order
-            sort(score_index_pairs.begin(), score_index_pairs.end(),
-                      [](const pair<float, size_t>& a, const pair<float, size_t>& b) {
-                          return a.first > b.first;
-                      });
+            qsort(score_index_pairs.data, score_index_pairs.size, sizeof(ScoreIndexPair), compare_scores_desc);
             
-            vector<bool> suppressed(score_index_pairs.size(), false);
+            char* suppressed = (char*)calloc(score_index_pairs.size, sizeof(char));
             int64_t selected_count = 0;
             
             // Apply NMS
-            for (size_t i = 0; i < score_index_pairs.size() && selected_count < max_output_boxes_per_class; i++) {
+            for (size_t i = 0; i < score_index_pairs.size && selected_count < max_output_boxes_per_class; i++) {
                 if (suppressed[i]) continue;
                 
-                size_t box_idx = score_index_pairs[i].second;
-                selected_indices.push_back({static_cast<int64_t>(batch), static_cast<int64_t>(cls), static_cast<int64_t>(box_idx)});
+                size_t box_idx = score_index_pairs.data[i].index;
+                SelectedIndex sel = {(int64_t)batch, (int64_t)cls, (int64_t)box_idx};
+                push_selected_index(&selected_indices, sel);
                 selected_count++;
                 
                 // Suppress overlapping boxes
                 const float* current_box = &boxes[batch * spatial_dimension * 4 + box_idx * 4];
                 
-                for (size_t j = i + 1; j < score_index_pairs.size(); j++) {
+                for (size_t j = i + 1; j < score_index_pairs.size; j++) {
                     if (suppressed[j]) continue;
                     
-                    size_t other_box_idx = score_index_pairs[j].second;
+                    size_t other_box_idx = score_index_pairs.data[j].index;
                     const float* other_box = &boxes[batch * spatial_dimension * 4 + other_box_idx * 4];
                     
                     float iou = compute_iou(current_box, other_box, center_point_box);
                     if (iou > iou_threshold) {
-                        suppressed[j] = true;
+                        suppressed[j] = 1;
                     }
                 }
             }
+            
+            free(suppressed);
+            free_score_vector(&score_index_pairs);
         }
     }
     
@@ -218,38 +281,41 @@ vector<SelectedIndex> nms_scalar(
 }
 
 // Write NMS results to text file
-void write_nms_results_to_file(const char* filename, const vector<SelectedIndex>& results) {
-    ofstream file(filename);
-    if (!file.is_open()) {
-        cerr << "Error: Cannot open file " << filename << " for writing." << endl;
+void write_nms_results_to_file(const char* filename, const SelectedIndexVector* results) {
+    FILE* file = fopen(filename, "w");
+    if (!file) {
+        fprintf(stderr, "Error: Cannot open file %s for writing.\n", filename);
         return;
     }
     
-    file << "Selected indices (batch_index, class_index, box_index):" << endl;
-    for (const auto& result : results) {
-        file << result.batch_index << ", " << result.class_index << ", " << result.box_index << endl;
+    fprintf(file, "Selected indices (batch_index, class_index, box_index):\n");
+    for (size_t i = 0; i < results->size; i++) {
+        fprintf(file, "%lld, %lld, %lld\n", 
+                (long long)results->data[i].batch_index,
+                (long long)results->data[i].class_index,
+                (long long)results->data[i].box_index);
     }
     
-    file.close();
-    cout << "NMS results written to " << filename << endl;
+    fclose(file);
+    printf("NMS results written to %s\n", filename);
 }
 
 // Write NMS results to binary file
-void write_nms_results_binary(const char* filename, const vector<SelectedIndex>& results) {
-    ofstream file(filename, ios::binary);
-    if (!file.is_open()) {
-        cerr << "Error: Cannot open file " << filename << " for writing." << endl;
+void write_nms_results_binary(const char* filename, const SelectedIndexVector* results) {
+    FILE* file = fopen(filename, "wb");
+    if (!file) {
+        fprintf(stderr, "Error: Cannot open file %s for writing.\n", filename);
         return;
     }
     
-    size_t count = results.size();
-    file.write(reinterpret_cast<const char*>(&count), sizeof(count));
+    size_t count = results->size;
+    fwrite(&count, sizeof(count), 1, file);
     
-    for (const auto& result : results) {
-        file.write(reinterpret_cast<const char*>(&result.batch_index), sizeof(result.batch_index));
-        file.write(reinterpret_cast<const char*>(&result.class_index), sizeof(result.class_index));
-        file.write(reinterpret_cast<const char*>(&result.box_index), sizeof(result.box_index));
+    for (size_t i = 0; i < results->size; i++) {
+        fwrite(&results->data[i].batch_index, sizeof(results->data[i].batch_index), 1, file);
+        fwrite(&results->data[i].class_index, sizeof(results->data[i].class_index), 1, file);
+        fwrite(&results->data[i].box_index, sizeof(results->data[i].box_index), 1, file);
     }
     
-    file.close();
+    fclose(file);
 }
