@@ -1,6 +1,14 @@
 #include "kernels.hpp"
 #include <cfloat> 
+#include <vector>
+#include <utility>  // For std::pair
+#include <algorithm>  // For std::sort, std::min
+#include <cstring>   // For memcpy
+#include <cmath>     // For mathematical functions
 #include "../../../lib/rvv_defs.hpp"
+
+using namespace std;  // Add this to avoid std:: prefix everywhere
+
 
 /****************** Specific Image Pre-processing Kernel ******************/
 void preprocess_image(
@@ -358,4 +366,282 @@ void leaky_relu_e32m8(const float* src, float* dest, size_t n, float alpha) {
 	}
 }
 
+/*************************** NMS Helper Functions ****************************/
 
+// RVV vectorized box format conversion
+void convert_box_format_rvv(const float* box, float* converted_box, int from_format, int to_format) {
+    if (from_format == to_format) {
+        // No conversion needed - copy with vector load/store
+        size_t vl = 4;
+        auto v_box = VECTOR_LOAD<float, M1>(box, vl);
+        VECTOR_STORE<float, M1>(converted_box, v_box, vl);
+        return;
+    }
+    
+    size_t vl = 4;
+    auto v_box = VECTOR_LOAD<float, M1>(box, vl);
+    
+    if (from_format == CENTER_FORMAT && to_format == CORNER_FORMAT) {
+        // Convert from [x_center, y_center, width, height] to [y1, x1, y2, x2]
+        // Load: [x_center, y_center, width, height]
+        auto x_center = VECTOR_EXTRACT_SCALAR<float, M1>(v_box);
+        auto y_center = VECTOR_EXTRACT_SCALAR<float, M1>(VECTOR_SLIDEDOWN<float, M1>(v_box, 1, vl));
+        auto width = VECTOR_EXTRACT_SCALAR<float, M1>(VECTOR_SLIDEDOWN<float, M1>(v_box, 2, vl));
+        auto height = VECTOR_EXTRACT_SCALAR<float, M1>(VECTOR_SLIDEDOWN<float, M1>(v_box, 3, vl));
+        
+        // Create vector [width/2, height/2, width/2, height/2]
+        float half_dims[4] = {width * 0.5f, height * 0.5f, width * 0.5f, height * 0.5f};
+        auto v_half_dims = VECTOR_LOAD<float, M1>(half_dims, vl);
+        
+        // Create center vector [x_center, y_center, x_center, y_center]
+        float centers[4] = {x_center, y_center, x_center, y_center};
+        auto v_centers = VECTOR_LOAD<float, M1>(centers, vl);
+        
+        // Compute [x_center - width/2, y_center - height/2, x_center + width/2, y_center + height/2]
+        float signs[4] = {-1.0f, -1.0f, 1.0f, 1.0f};
+        auto v_signs = VECTOR_LOAD<float, M1>(signs, vl);
+        auto v_result_temp = VECTOR_FMACC<float, M1>(v_centers, v_half_dims, v_signs, vl);
+        
+        // Swap to get [y1, x1, y2, x2] from [x1, y1, x2, y2]
+        float result_temp[4];
+        VECTOR_STORE<float, M1>(result_temp, v_result_temp, vl);
+        converted_box[0] = result_temp[1];  // y1
+        converted_box[1] = result_temp[0];  // x1
+        converted_box[2] = result_temp[3];  // y2
+        converted_box[3] = result_temp[2];  // x2
+        
+    } else if (from_format == CORNER_FORMAT && to_format == CENTER_FORMAT) {
+        // Convert from [y1, x1, y2, x2] to [x_center, y_center, width, height]
+        auto y1 = VECTOR_EXTRACT_SCALAR<float, M1>(v_box);
+        auto x1 = VECTOR_EXTRACT_SCALAR<float, M1>(VECTOR_SLIDEDOWN<float, M1>(v_box, 1, vl));
+        auto y2 = VECTOR_EXTRACT_SCALAR<float, M1>(VECTOR_SLIDEDOWN<float, M1>(v_box, 2, vl));
+        auto x2 = VECTOR_EXTRACT_SCALAR<float, M1>(VECTOR_SLIDEDOWN<float, M1>(v_box, 3, vl));
+        
+        // Create vectors [x1, y1, x2, y2] and [x2, y2, x1, y1]
+        float corners1[4] = {x1, y1, x2, y2};
+        float corners2[4] = {x2, y2, x1, y1};
+        auto v_corners1 = VECTOR_LOAD<float, M1>(corners1, vl);
+        auto v_corners2 = VECTOR_LOAD<float, M1>(corners2, vl);
+        
+        // Sum: [x1+x2, y1+y2, x2+x1, y2+y1] (but we only need first two for center)
+        auto v_sum = VECTOR_ADD<float, M1>(v_corners1, v_corners2, vl);
+        
+        // Difference: [x2-x1, y2-y1, x1-x2, y1-y2] (we only need first two for width/height)
+        auto v_diff = VECTOR_SUB<float, M1>(v_corners2, v_corners1, vl);
+        
+        // Divide by 2 for centers
+        auto v_half = VECTOR_MOVE<float, M1>(0.5f, vl);
+        auto v_center = VECTOR_MUL<float, M1>(v_sum, v_half, vl);
+        
+        // Result: [x_center, y_center, width, height]
+        VECTOR_STORE<float, M1>(converted_box, v_center, 2);      // Store centers
+        VECTOR_STORE<float, M1>(converted_box + 2, v_diff, 2);    // Store dimensions
+    }
+}
+
+// Template version of compute_iou_rvv that accepts LMUL parameter
+template<int LMUL>
+float compute_iou_rvv_template(const float* box1, const float* box2, int center_point_box) {
+    float converted_box1[4], converted_box2[4];
+
+    if (center_point_box == CENTER_FORMAT) {
+        convert_box_format_rvv(box1, converted_box1, CENTER_FORMAT, CORNER_FORMAT);
+        convert_box_format_rvv(box2, converted_box2, CENTER_FORMAT, CORNER_FORMAT);
+        box1 = converted_box1;
+        box2 = converted_box2;
+    }
+
+    size_t vl = 2;
+    auto b1_xy1 = VECTOR_LOAD<float, LMUL>(box1, vl);
+    auto b1_xy2 = VECTOR_LOAD<float, LMUL>(box1 + 2, vl);
+
+    auto b2_xy1 = VECTOR_LOAD<float, LMUL>(box2, vl);
+    auto b2_xy2 = VECTOR_LOAD<float, LMUL>(box2 + 2, vl);
+
+    auto inter_xy1 = VECTOR_MAX<float, LMUL>(b1_xy1, b2_xy1, vl);
+    auto inter_xy2 = VECTOR_MIN<float, LMUL>(b1_xy2, b2_xy2, vl);
+
+    auto inter_wh = VECTOR_SUB<float, LMUL>(inter_xy2, inter_xy1, vl);
+    inter_wh = VECTOR_MAX<float, LMUL>(inter_wh, 0.0f, vl);
+
+    auto inter_w = VECTOR_EXTRACT_SCALAR<float, LMUL>(VECTOR_SLIDEDOWN<float, LMUL>(inter_wh, 1, vl));
+    auto inter_h = VECTOR_EXTRACT_SCALAR<float, LMUL>(inter_wh);
+    float inter_area = inter_w * inter_h;
+
+    auto b1_wh = VECTOR_SUB<float, LMUL>(b1_xy2, b1_xy1, vl);
+    auto area1 = VECTOR_EXTRACT_SCALAR<float, LMUL>(b1_wh) * VECTOR_EXTRACT_SCALAR<float, LMUL>(VECTOR_SLIDEDOWN<float, LMUL>(b1_wh, 1, vl));
+
+    auto b2_wh = VECTOR_SUB<float, LMUL>(b2_xy2, b2_xy1, vl);
+    auto area2 = VECTOR_EXTRACT_SCALAR<float, LMUL>(b2_wh) * VECTOR_EXTRACT_SCALAR<float, LMUL>(VECTOR_SLIDEDOWN<float, LMUL>(b2_wh, 1, vl));
+
+    float union_area = area1 + area2 - inter_area;
+
+    return union_area > 0 ? inter_area / union_area : 0;
+}
+
+// Helper: Fast overlap check using separating axis test
+// Returns true if boxes overlap at all, false if completely separated
+inline bool can_boxes_overlap(const float* box1, const float* box2) {
+    // box format: [y1, x1, y2, x2] in corner format
+    // Quick rejection: if boxes don't overlap at all, IoU = 0
+    return !(box1[2] < box2[0] || box2[2] < box1[0] ||  // no y overlap
+             box1[3] < box2[1] || box2[3] < box1[1]);   // no x overlap
+}
+
+// Module: Apply greedy NMS suppression with fast overlap rejection
+template<int LMUL>
+void apply_greedy_suppression(
+    const float* boxes,
+    const vector<pair<float, size_t>>& score_index_pairs,
+    size_t batch, size_t cls, size_t spatial_dimension,
+    int64_t max_output_boxes_per_class,
+    float iou_threshold,
+    int center_point_box,
+    vector<SelectedIndex>& selected_indices
+) {
+    const size_t n = score_index_pairs.size();
+    if (n == 0) return;
+    
+    vector<bool> suppressed(n, false);
+    int64_t selected_count = 0;
+    
+    // Pre-convert all boxes to corner format to avoid repeated conversions
+    vector<float> box_corners(n * 4);
+    for (size_t i = 0; i < n; i++) {
+        size_t box_idx = score_index_pairs[i].second;
+        const float* box = &boxes[batch * spatial_dimension * 4 + box_idx * 4];
+        
+        if (center_point_box == CENTER_FORMAT) {
+            convert_box_format_rvv(box, &box_corners[i * 4], CENTER_FORMAT, CORNER_FORMAT);
+        } else {
+            memcpy(&box_corners[i * 4], box, 4 * sizeof(float));
+        }
+    }
+
+    for (size_t i = 0; i < n && selected_count < max_output_boxes_per_class; i++) {
+        if (suppressed[i]) continue;
+
+        size_t box_idx = score_index_pairs[i].second;
+        selected_indices.push_back({static_cast<int64_t>(batch), static_cast<int64_t>(cls), static_cast<int64_t>(box_idx)});
+        selected_count++;
+
+        if (selected_count >= max_output_boxes_per_class) break;
+
+        const float* current_box = &box_corners[i * 4];
+        
+        // Process remaining boxes in batches for better vectorization
+        size_t j = i + 1;
+        
+        // Vectorized batch processing: check multiple boxes at once
+        while (j < n) {
+            size_t batch_end = min(j + 8, n);  // Process 8 boxes at a time
+            
+            for (size_t k = j; k < batch_end; k++) {
+                if (suppressed[k]) continue;
+                
+                const float* other_box = &box_corners[k * 4];
+                
+                // Fast rejection filter (separating axis test)
+                if (!can_boxes_overlap(current_box, other_box)) {
+                    continue;  // Skip expensive IoU computation
+                }
+                
+                // Full IoU computation only for candidates
+                float iou = compute_iou_rvv_template<LMUL>(current_box, other_box, CORNER_FORMAT);
+                
+                if (iou > iou_threshold) {
+                    suppressed[k] = true;
+                }
+            }
+            
+            j = batch_end;
+        }
+    }
+}
+
+// Module: Sort score-index pairs by score in descending order
+void sort_by_score_descending(vector<pair<float, size_t>>& score_index_pairs) {
+    sort(score_index_pairs.begin(), score_index_pairs.end(),
+         [](const pair<float, size_t>& a, const pair<float, size_t>& b) {
+             return a.first > b.first;  // Descending order by score
+         });
+}
+
+// Module: Filter scores above threshold using vectorized operations
+template<int LMUL>
+void filter_scores_by_threshold(
+    const float* scores,
+    size_t batch, size_t cls, size_t spatial_dimension,
+    size_t num_classes,
+    float score_threshold,
+    vector<pair<float, size_t>>& score_index_pairs
+) {
+    for (size_t i = 0; i < spatial_dimension; i += SET_VECTOR_LENGTH_MAX<float, LMUL>()) {
+        size_t vl = SET_VECTOR_LENGTH<float, LMUL>(spatial_dimension - i);
+        size_t score_idx = batch * num_classes * spatial_dimension + cls * spatial_dimension + i;
+
+        auto vscores = VECTOR_LOAD<float, LMUL>(&scores[score_idx], vl);
+        auto vthreshold = VECTOR_MOVE<float, LMUL>(score_threshold, vl);
+        auto mask = VECTOR_GE<float, LMUL>(vscores, vthreshold, vl);
+
+        size_t count = VECTOR_COUNT_POP(mask, vl);
+        if (count > 0) {
+            auto all_indices = VECTOR_VID<uint32_t, LMUL>(vl);
+            auto selected_indices_vec = VECTOR_COMPRESS<uint32_t, LMUL>(all_indices, mask, vl);
+            uint32_t* indices_arr = new uint32_t[count];
+            VECTOR_STORE<uint32_t, LMUL>(indices_arr, selected_indices_vec, count);
+            for (size_t k = 0; k < count; k++) {
+                size_t j = indices_arr[k];
+                score_index_pairs.push_back({scores[score_idx + j], i + j});
+            }
+            delete[] indices_arr;
+        }
+    }
+}
+
+/************************************ NMS ************************************/
+
+// Template NMS implementation for all LMUL variants
+template<int LMUL>
+vector<SelectedIndex> nms_template(
+    const float* boxes, const float* scores,
+    size_t num_batches, size_t num_classes, size_t spatial_dimension,
+    int64_t max_output_boxes_per_class, float iou_threshold, float score_threshold,
+    int center_point_box
+) {
+    vector<SelectedIndex> selected_indices;
+
+    if (max_output_boxes_per_class == 0) {
+        return selected_indices;
+    }
+
+    for (size_t batch = 0; batch < num_batches; batch++) {
+        for (size_t cls = 0; cls < num_classes; cls++) {
+            // Step 1: Filter scores above threshold
+            vector<pair<float, size_t>> score_index_pairs;
+            filter_scores_by_threshold<LMUL>(scores, batch, cls, spatial_dimension, 
+                                             num_classes, score_threshold, score_index_pairs);
+
+            // Step 2: Sort by score (highest first)
+            sort_by_score_descending(score_index_pairs);
+
+            // Step 3: Apply greedy NMS suppression
+            apply_greedy_suppression<LMUL>(boxes, score_index_pairs, batch, cls, spatial_dimension,
+                                          max_output_boxes_per_class, iou_threshold, 
+                                          center_point_box, selected_indices);
+        }
+    }
+
+    return selected_indices;
+}
+
+// NMS implementation with RVV m8
+vector<SelectedIndex> nms_e32m8(
+    const float* boxes, const float* scores,
+    size_t num_batches, size_t num_classes, size_t spatial_dimension,
+    int64_t max_output_boxes_per_class, float iou_threshold, float score_threshold,
+    int center_point_box
+) {
+    return nms_template<M8>(boxes, scores, num_batches, num_classes, spatial_dimension,
+                            max_output_boxes_per_class, iou_threshold, score_threshold, center_point_box);
+}

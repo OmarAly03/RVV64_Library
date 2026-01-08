@@ -5,6 +5,24 @@
 #include <algorithm>
 #include <cstring>
 #include <cmath>
+#include <vector>
+
+// Box format constants
+#define CORNER_FORMAT 0  // [y1, x1, y2, x2]
+#define CENTER_FORMAT 1  // [x_center, y_center, width, height]
+
+struct SelectedIndex {
+    int64_t batch_index;
+    int64_t class_index;
+    int64_t box_index;
+};
+
+std::vector<SelectedIndex> nms_e32m8(
+    const float* boxes, const float* scores,
+    size_t num_batches, size_t num_classes, size_t spatial_dimension,
+    int64_t max_output_boxes_per_class, float iou_threshold, float score_threshold,
+    int center_point_box
+);
 
 #ifndef MIN
 #define MIN(a,b) ((a) < (b) ? (a) : (b))

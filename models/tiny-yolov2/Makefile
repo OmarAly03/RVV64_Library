@@ -1,6 +1,9 @@
 # TARGET = main
 IMG ?= cat
 
+IMG_DIR = ./images/
+BIN_IMG_DIR = ./image_binaries/
+
 # Compiler and Flags
 CC = riscv64-unknown-linux-gnu-g++
 FLAGS = -march=rv64gcv -O1 -g -static
@@ -33,16 +36,22 @@ extract_parameters: src/extract_weights.py
 	@echo "Extracting Parameters..."
 	@python3 src/extract_weights.py
 	
-extract_image: src/extract_image.py
-	python3 src/extract_image.py $(IMG_PATH)
+extract_images: src/extract_image.py
+	python3 src/extract_image.py $(IMG_DIR) $(BIN_IMG_DIR)
 
 clean:
 	@echo "Cleaning build files..."
 	find . \( -name "*.S" -o -name "*.o" -o -name "*.spike" \) -type f -delete
 	rm -f $(TARGET)
+	rm -rf ./output_files/*
 	@echo "Done!"
 
 clean_parameters:
 	@echo "Cleaning parameters files..."
 	rm -rf ./model_parameters/*.bin ./model_parameters/*.txt
+	@echo "Done!"
+
+clean_img_bin:
+	@echo "Cleaning images binaries..."
+	rm -rf ./image_binaries/*
 	@echo "Done!"

@@ -111,27 +111,42 @@ static std::vector<BoundingBox> decode_output(const float* net_output, const std
 }
 
 static std::vector<BoundingBox> non_max_suppression(std::vector<BoundingBox>& boxes) {
-    std::sort(boxes.begin(), boxes.end(), [](const BoundingBox& a, const BoundingBox& b) {
-        return a.score > b.score;
-    });
+    if (boxes.empty()) return {};
 
-    std::vector<BoundingBox> suppressed_boxes;
-    std::vector<bool> suppressed(boxes.size(), false);
+    // 1. Prepare data for the vectorized kernel
+    // The kernel expects: boxes [spatial_dim * 4], scores [1 * num_classes * spatial_dim]
+    // Since our boxes are already filtered/decoded, spatial_dim = boxes.size()
+    size_t n = boxes.size();
+    std::vector<float> flat_boxes(n * 4);
+    std::vector<float> flat_scores(n); // We treat this as 1 class for simplicity
 
-    for (size_t i = 0; i < boxes.size(); ++i) {
-        if (suppressed[i]) continue;
-        suppressed_boxes.push_back(boxes[i]);
-        suppressed[i] = true;
-        for (size_t j = i + 1; j < boxes.size(); ++j) {
-            if (suppressed[j]) continue;
-            if (boxes[i].class_id == boxes[j].class_id && iou(boxes[i], boxes[j]) > NMS_THRESHOLD) {
-                suppressed[j] = true;
-            }
-        }
+    for (size_t i = 0; i < n; ++i) {
+        flat_boxes[i * 4 + 0] = boxes[i].x;
+        flat_boxes[i * 4 + 1] = boxes[i].y;
+        flat_boxes[i * 4 + 2] = boxes[i].w;
+        flat_boxes[i * 4 + 3] = boxes[i].h;
+        flat_scores[i] = boxes[i].score;
     }
-    return suppressed_boxes;
-}
 
+    // 2. Call the vectorized RVV kernel
+    // We use num_classes=1 because the input boxes already have class_id assigned
+    auto selected = nms_e32m8(
+        flat_boxes.data(), flat_scores.data(),
+        1, 1, n,                // 1 batch, 1 class, n spatial dims
+        n,                      // max output boxes
+        NMS_THRESHOLD,          // 
+        0.0f,                   // score_threshold (already filtered in decode_output)
+        CENTER_FORMAT           // YOLOv2 uses [center_x, center_y, w, h]
+    );
+
+    // 3. Convert results back to BoundingBox vector
+    std::vector<BoundingBox> result;
+    for (const auto& sel : selected) {
+        result.push_back(boxes[sel.box_index]);
+    }
+
+    return result;
+}
 
 // --- 2. Main Inference Function (HEAVILY MODIFIED) ---
 
