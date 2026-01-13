@@ -1,3 +1,80 @@
+# RVV64_Library
+
+A collection of **RISC-V Vector (RVV)** accelerated kernels and utilities for high-performance computing and machine learning workloads.  
+This repository implements a variety of computational kernels using RISC-V Vector instructions and organizes them into a reusable library — suitable for benchmarking, integration, and further development.
+
+---
+
+## 📁 Repository Structure
+
+The project is organized into the following top-level directories:
+```
+RVV64_Library​
+├── kernels
+├── lib
+├── libso
+├── models
+├── pyv
+├── README.md
+├── requirements.txt
+└── scripts
+```
+
+---
+
+### 📦 `kernels/`
+
+Contains the **core RVV-optimized kernel implementations** and their tests.  
+Each kernel corresponds to a key numerical primitive (e.g., `matmul`, `conv`, `batch_norm`, etc.) used in deep learning and scientific computing workloads.  
+These are often written in C/C++ with RVV intrinsics or assembly for maximum performance.
+
+---
+
+### 📦 `lib/`
+
+This directory contains **low-level RVV vector APIs** implemented as C++ headers.  
+These files wrap RVV instructions into reusable building blocks:
+
+- Vector loads & stores
+- Mask operations
+- Reductions
+- Indexed loads
+- Narrowing & reinterpretation
+- Multiply-accumulate
+- Vector length control
+
+These are used internally by all kernels and models to keep the RVV code clean, portable, and maintainable.
+
+---
+
+### 📦 `libso/`
+
+Contains files to build the **shared (dynamic) library** version of the RVV kernels.  
+Use this when you want to link dynamically against the RVV64 library from other applications.
+
+---
+
+### 📦 `models/`
+
+Includes sample or reference **data/model files** used for validating kernels or running example benchmarks.
+
+---
+
+### 📦 `pyv/`
+
+Python bindings and utilities for the library.  
+This section provides a bridge to use RVV kernels from Python — ideal for quick experimentation and scripting.
+
+---
+
+### 📄 `requirements.txt`
+
+Python package dependencies used by the Python tools / benchmarks under `pyv/` or `scripts/`.  
+Install them before running Python-based utilities:
+
+```bash
+pip install -r requirements.txt
+
 ## Kernel Categorization
 
 ### 1. Compute-Intensive Linear Operators
