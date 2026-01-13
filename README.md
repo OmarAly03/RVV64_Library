@@ -73,7 +73,8 @@ Python package dependencies used by the Python tools / benchmarks under `pyv/` o
 Install them before running Python-based utilities:
 
 ```bash
-pip install -r requirements.txt```
+pip install -r requirements.txt
+```
 
 ## Kernel Categorization
 
