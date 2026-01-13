@@ -74,6 +74,7 @@ Install them before running Python-based utilities:
 
 ```bash
 pip install -r requirements.txt
+```
 
 ## Kernel Categorization
 
