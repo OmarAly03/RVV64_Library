@@ -35,11 +35,6 @@ void conv2d_scalar(
     int input_h, int input_w, int kernel_h, int kernel_w,
     int stride_h, int stride_w, int pad_h, int pad_w);
 
-void conv2d_scalar(const float* input, int in_h, int in_w, int in_c,
-                   const float* kernel, int k_h, int k_w, int out_c,
-                   float* output, int out_h, int out_w,
-                   int stride_h, int stride_w, int pad_h, int pad_w);
-
 // Im2Col and GEMM helper functions
 void im2col_scalar(const float* input,
                    int C, int H, int W,
@@ -89,14 +84,14 @@ void conv2d_im2col_gemm_m8(
     int pad_h, int pad_w, int stride_h, int stride_w,
     int has_bias);
 
-	void conv2d(
-		const float* input, float* output, const float* weights,
-		int batch,
-		int in_channels, int in_height, int in_width,
-		int out_channels,
-		int kernel_h, int kernel_w,
-		int stride_h, int stride_w,
-		int pad_h, int pad_w);
+void conv2d(
+	const float* input, float* output, const float* weights,
+	int batch,
+	int in_channels, int in_height, int in_width,
+	int out_channels,
+	int kernel_h, int kernel_w,
+	int stride_h, int stride_w,
+	int pad_h, int pad_w);
 
 // 3x3 specialized RVV functions
 void conv2d_3x3_m1(
@@ -140,6 +135,7 @@ void conv2d_3x3_m4_rgb(
 void conv2d_3x3_m8_rgb(
     const float* input, const float* kernel, float* output,
     int H, int W, bool use_padding);
+
 
 // Utility functions
 void write_matrix_to_file(const char* filename, float* matrix, std::size_t rows, std::size_t cols);
