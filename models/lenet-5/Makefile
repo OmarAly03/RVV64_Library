@@ -3,8 +3,6 @@ CC = riscv64-unknown-linux-gnu-g++
 FLAGS = -march=rv64gcv -O0 -g -static
 
 # Include directories
-# -Iinclude (for defs.hpp, lenet5.hpp)
-# -I../lib (Assuming this is for __exp_2xf32, based on matmul reference)
 INCLUDES = -Iinclude -I../../lib
 
 # Source files for LeNet-5
@@ -12,6 +10,8 @@ SRCS = main.cpp src/lenet5.cpp src/kernels.cpp
 
 # Output binary
 TARGET = output_files/main
+
+DIGIT ?= 0
 
 # Default target
 all: $(TARGET)
@@ -23,7 +23,7 @@ $(TARGET): $(SRCS)
 
 run: $(TARGET)
 	@echo "Running LeNet-5 on QEMU..."
-	@qemu-riscv64 -cpu rv64,v=true $(TARGET)
+	@qemu-riscv64 -cpu rv64,v=true $(TARGET) $(DIGIT)
 
 clean:
 	@echo "Cleaning up..."

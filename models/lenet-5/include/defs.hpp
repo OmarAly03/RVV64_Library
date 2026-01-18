@@ -68,69 +68,37 @@ const int F5_OUT = 10;
 std::vector<float> load_weights(const std::string& filename);
 void load_preprocessed_image(std::vector<float>& img_buffer, const std::string& filename);
 
-// --- 3. Scalar Kernel Declarations ---
-inline int conv_output_size(int input_size, int kernel_size, int stride, int pad);
-void conv2d_scalar(
-    const float* input, const float* kernel, float* output,
-    int batch_size, int in_channels, int out_channels,
-    int input_h, int input_w, int kernel_h, int kernel_w,
-    int stride_h, int stride_w, int pad_h, int pad_w);
+void conv2d(
+	const float* input, float* output, const float* weights,
+	int batch,
+	int in_channels, int in_height, int in_width,
+	int out_channels,
+	int kernel_h, int kernel_w,
+	int stride_h, int stride_w,
+	int pad_h, int pad_w);
 
-void maxpool_scalar_tile(
-    const float* X, float* Y, int64_t* I,
-    size_t N, size_t C, size_t H, size_t W, size_t K, size_t S, bool ceil_mode,
-    size_t OH, size_t OW,
-    size_t tile_oh_start, size_t tile_ow_start,
-    size_t tile_oh_end, size_t tile_ow_end);
-
-void relu_scalar(float* input, float* output, size_t size);
-
-void dense_scalar(const float* input, const float* weights, const float* bias,
-    float* output, size_t in_features, size_t out_features);
-
-void bias_add_scalar(const float* input, const float* bias, float* output,
-    size_t batch_size, size_t channels,
-    size_t height, size_t width);
-
-void tensor_add_scalar(const float* input_a, const float* input_b, float* output,
-    size_t size);
-
-void softmax_scalar(float* input, float* output, size_t size);
-
-
-// --- 4. Vector Kernel Declarations (NEW) ---
-void dense_e32m8(const float* input, const float* weights, const float* bias,
-                   float* output, size_t in_features, size_t out_features);
+void maxpool_e32m8(const float* input, float* output,
+	int batch, int channels,
+	int in_h, int in_w,
+	int k_h, int k_w,
+	int stride_h, int stride_w,
+	int pad_h, int pad_w);
 
 void tensor_add_e32m8(const float* input_a, const float* input_b, float* output,
-                           size_t size);
+	size_t size);
+
+void softmax(
+	const float* input,
+	float* output,
+	size_t n
+);
+
+void bias_add_e32m8(const float* input, const float* bias, float* output,
+	size_t channels, size_t channel_size);
 
 void relu_e32m8(float* input, float* output, size_t size);
 
-void bias_add_e32m8(const float* input, const float* bias, float* output,
-                      size_t batch_size, size_t channels,
-                      size_t height, size_t width);
-
-void softmax_vec(const float *i, float *o, uint64_t channels,
-                 uint64_t innerSize);
-
-void conv2d_e32m8(
-    const float* input, const float* kernel, float* output,
-    int batch_size, int in_channels, int out_channels,
-    int input_h, int input_w, int kernel_h, int kernel_w,
-    int stride_h, int stride_w, int pad_h, int pad_w);
-
-// NEW MAXPOOL DECLARATIONS
-void maxpool_e32m8_tile(
-    const float* X, float* Y, int64_t* I,
-    size_t N, size_t C, size_t H, size_t W, size_t K, size_t S, bool ceil_mode,
-    size_t OH, size_t OW,
-    size_t tile_oh_start, size_t tile_ow_start,
-    size_t tile_oh_end, size_t tile_ow_end);
-
-void maxpool_e32m8_tiled(
-    const float* X, float* Y, int64_t* I,
-    size_t N, size_t C, size_t H, size_t W, size_t K, size_t S, bool ceil_mode);
-
-
+void dense_e32m8(const float* input, const float* weights, const float* bias,
+	float* output, size_t in_features, size_t out_features);
+	
 #endif // DEFS_HPP
