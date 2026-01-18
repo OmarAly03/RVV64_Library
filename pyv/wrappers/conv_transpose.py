@@ -2,7 +2,7 @@ import ctypes
 import os
 
 _lib = ctypes.CDLL(
-    os.path.join(os.path.dirname(__file__), "../../libso/libconv_transpose.so")
+    os.path.join(os.path.dirname(__file__), "../../libso/libconvtranspose.so")
 )
 
 # ---- Signatures ----

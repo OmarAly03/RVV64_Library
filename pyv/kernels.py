@@ -9,6 +9,7 @@ from .wrappers import conv_transpose as conv_transpose_wrapper
 from .wrappers import dense as dense_wrapper
 from .wrappers import leaky_relu as leaky_relu_wrapper
 from .wrappers import maxpool as maxpool_wrapper
+from .wrappers import conv as conv_wrapper
 
 def relu(x: np.ndarray, variant="rvv"):
     assert x.dtype == np.float32
@@ -295,5 +296,99 @@ def maxpool(input: np.ndarray, k_h: int, k_w: int, stride_h: int = 1, stride_w: 
         maxpool_wrapper.maxpool_rvv_tiled_m8(ptr_f32(input), ptr_f32(out), N, C, H, W, k_h, k_w, stride_h, stride_w, pad_h, pad_w, tile_h, tile_w)
     else:
         raise ValueError(f"Unknown variant: {variant}")
+
+    return out
+
+def conv2d(input: np.ndarray, kernel: np.ndarray, bias: np.ndarray = None, stride=(1,1), pad=(0,0), variant="rvv"):
+    assert input.dtype == np.float32
+    assert kernel.dtype == np.float32
+    if bias is not None:
+        assert bias.dtype == np.float32
+    assert input.flags["C_CONTIGUOUS"]
+    assert kernel.flags["C_CONTIGUOUS"]
+
+    # input: N, C_in, H, W
+    assert input.ndim == 4
+    N, C_in, H, W = input.shape
+    
+    # kernel: C_out, C_in, kH, kW
+    assert kernel.ndim == 4
+    C_out, C_in_k, kH, kW = kernel.shape
+    assert C_in == C_in_k, f"Input channels {C_in} != Kernel in-channels {C_in_k}"
+
+    stride_h, stride_w = stride
+    pad_h, pad_w = pad
+
+    out_h = (H + 2 * pad_h - kH) // stride_h + 1
+    out_w = (W + 2 * pad_w - kW) // stride_w + 1
+
+    out = np.zeros((N, C_out, out_h, out_w), dtype=np.float32)
+
+    has_bias = 1 if bias is not None else 0
+    bias_ptr = ptr_f32(bias) if has_bias else None  # Will be nullptr if None
+
+    if variant == "scalar":
+        conv_wrapper.conv2d_scalar(ptr_f32(input), ptr_f32(kernel), ptr_f32(out), 
+                                   N, C_in, C_out, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w)
+    elif variant == "M1":
+        conv_wrapper.conv2d_e32m1(ptr_f32(input), ptr_f32(kernel), ptr_f32(out), 
+                                  N, C_in, C_out, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w)
+    elif variant == "M2":
+        conv_wrapper.conv2d_e32m2(ptr_f32(input), ptr_f32(kernel), ptr_f32(out), 
+                                  N, C_in, C_out, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w)
+    elif variant == "M4":
+        conv_wrapper.conv2d_e32m4(ptr_f32(input), ptr_f32(kernel), ptr_f32(out), 
+                                  N, C_in, C_out, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w)
+    elif variant == "M8":
+        conv_wrapper.conv2d_e32m8(ptr_f32(input), ptr_f32(kernel), ptr_f32(out), 
+                                  N, C_in, C_out, H, W, kH, kW, stride_h, stride_w, pad_h, pad_w)
+    elif variant == "im2col_M8":
+        # Calculate buffer sizes for im2col_gemm
+        # col_buf: C_in * kH * kW * outH * outW
+        # gemm_buf: out_size (N * C_out * outH * outW) - usually handled internally by wrapper logic or separate buffer
+        
+        # The C++ function signature for im2col asks for specific buffers:
+        # float* col_buf, float* gemm_buf
+        
+        col_len = C_in * kH * kW * out_h * out_w
+        gemm_len = N * C_out * out_h * out_w # Intermediate gemm output often same size as final output if no bias/transpose stuff
+        
+        col_buf = np.zeros(col_len, dtype=np.float32)
+        gemm_buf = np.zeros(gemm_len, dtype=np.float32)
+        
+        # Ensure bias is valid pointer (if None, create dummy or handle in wrapper if wrapper supports nullptr)
+        # The wrapper definition for im2col accepts bias pointer. 
+        if bias is None:
+             # Create a dummy bias of zeros if required by C kernel or pass nullptr if handled.
+             # Based on common usage, passing None (nullptr) often works if has_bias=0.
+             actual_bias = np.zeros(C_out, dtype=np.float32) # Safe fallback
+             has_bias = 0
+        else:
+             actual_bias = bias
+
+        conv_wrapper.conv2d_im2col_gemm_m8(
+            ptr_f32(input), ptr_f32(kernel), ptr_f32(actual_bias), ptr_f32(out),
+            ptr_f32(col_buf), ptr_f32(gemm_buf),
+            C_in, H, W, C_out, kH, kW,
+            pad_h, pad_w, stride_h, stride_w, has_bias
+        )
+    else:
+        # Check for specialized 3x3 kernels
+        if kH == 3 and kW == 3:
+            # Note: These kernels might assume specific layouts or padding handling as per C++ impl
+            # Usually they are N=1 or specialized. Assuming signatures match wrappers.
+            use_padding = (pad_h > 0 or pad_w > 0)
+            if variant == "3x3_M1":
+                conv_wrapper.conv2d_3x3_m1(ptr_f32(input), ptr_f32(kernel), ptr_f32(out), H, W, use_padding)
+            elif variant == "3x3_M2":
+                conv_wrapper.conv2d_3x3_m2(ptr_f32(input), ptr_f32(kernel), ptr_f32(out), H, W, use_padding)
+            elif variant == "3x3_M4":
+                conv_wrapper.conv2d_3x3_m4(ptr_f32(input), ptr_f32(kernel), ptr_f32(out), H, W, use_padding)
+            elif variant == "3x3_M8":
+                conv_wrapper.conv2d_3x3_m8(ptr_f32(input), ptr_f32(kernel), ptr_f32(out), H, W, use_padding)
+            else:
+                 raise ValueError(f"Unknown variant: {variant}")
+        else:
+            raise ValueError(f"Unknown variant: {variant}")
 
     return out

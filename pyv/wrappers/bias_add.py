@@ -2,7 +2,7 @@ import ctypes
 import os
 
 _lib = ctypes.CDLL(
-    os.path.join(os.path.dirname(__file__), "../../libso/libbias_add.so")
+    os.path.join(os.path.dirname(__file__), "../../libso/libbiasadd.so")
 )
 
 # ---- Signatures ----
