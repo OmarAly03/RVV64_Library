@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <cassert>
 #include <riscv_vector.h>
-#include "defs.h"
+#include "../include/defs.h"
 #include "rvv_defs.hpp"
 #include <string.h>
 #include <stddef.h>
