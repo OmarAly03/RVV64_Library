@@ -6,17 +6,9 @@ import os
 
 # Get the absolute path to the script's directory
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-if SCRIPT_DIR == "":
-    SCRIPT_DIR = "."
 
 # =============== Import Utility Functions ===============
-sys.path.append(os.path.join(SCRIPT_DIR, "src"))
-try:
-    from onnx_utils import max_abs_error, snr_db
-except ImportError:
-    print("Error: Could not import from src.onnx_utils")
-    print("Please ensure onnx_utils.py is in the 'src' directory.")
-    sys.exit(1)
+from src.onnx_utils import max_abs_error, snr_db
 
 
 # ==== Loading ONNX Model ====
@@ -90,8 +82,7 @@ def load_result(filename, shape):
 
 implementations = [
     ("ONNX Golden Ref", onnx_ref),
-    ("C Scalar", load_result("softmax_scalar.bin", shape)),
-    ("C Vectorized", load_result("softmax_vector.bin", shape)),
+    ("C Implementation", load_result("softmax_out.bin", shape)),
 ]
 
 # ==== Results Table ====

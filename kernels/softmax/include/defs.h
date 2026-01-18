@@ -4,16 +4,14 @@
 #include <cstddef>
 #include <cstdint>
 
-// New scalar softmax prototype
-void softmax(const float *i, float *o, float *buf,
-             uint64_t channels, uint64_t innerSize);
 
-// New vector softmax prototype
-void softmax_vec(const float *i, float *o, uint64_t channels,
-                 uint64_t innerSize);
+void softmax(
+    const float* input,
+    float* output,
+    size_t n
+);
 
-
-// Utility functions (unchanged)
+// Utility functions 
 void write_matrix_to_file(const char* filename, float* matrix, std::size_t rows, std::size_t cols);
 void write_matrix_binary(const char* filename, float* matrix, std::size_t count);
 
