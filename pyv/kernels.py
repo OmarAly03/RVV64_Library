@@ -10,6 +10,7 @@ from .wrappers import dense as dense_wrapper
 from .wrappers import leaky_relu as leaky_relu_wrapper
 from .wrappers import maxpool as maxpool_wrapper
 from .wrappers import conv as conv_wrapper
+from .wrappers import softmax as softmax_wrapper 
 
 def relu(x: np.ndarray, variant="rvv"):
     assert x.dtype == np.float32
@@ -214,34 +215,108 @@ def conv_transpose(input: np.ndarray, kernel: np.ndarray, stride=(1,1), pad=(0,0
 
     return out
 
-def dense(x: np.ndarray, weights: np.ndarray, bias: np.ndarray = None, variant="rvv"):
+# def dense(x: np.ndarray, weights: np.ndarray, bias: np.ndarray = None, variant="rvv"):
+#     assert x.dtype == np.float32
+#     assert weights.dtype == np.float32
+#     assert x.flags["C_CONTIGUOUS"]
+#     assert weights.flags["C_CONTIGUOUS"]
+
+#     # x: (in_features,) or (batch, in_features)
+#     if x.ndim == 1:
+#         in_features = x.shape[0]
+#         out_features = weights.shape[1]
+#         out = np.zeros((out_features,), dtype=np.float32)
+#         if bias is None:
+#             bias = np.zeros((out_features,), dtype=np.float32)
+#         if variant == "scalar":
+#             dense_wrapper.dense_scalar(ptr_f32(x), ptr_f32(weights), ptr_f32(bias), ptr_f32(out), in_features, out_features)
+#         elif variant == "M1":
+#             dense_wrapper.dense_e32m1(ptr_f32(x), ptr_f32(weights), ptr_f32(bias), ptr_f32(out), in_features, out_features)
+#         elif variant == "M2":
+#             dense_wrapper.dense_e32m2(ptr_f32(x), ptr_f32(weights), ptr_f32(bias), ptr_f32(out), in_features, out_features)
+#         elif variant == "M4":
+#             dense_wrapper.dense_e32m4(ptr_f32(x), ptr_f32(weights), ptr_f32(bias), ptr_f32(out), in_features, out_features)
+#         elif variant == "M8":
+#             dense_wrapper.dense_e32m8(ptr_f32(x), ptr_f32(weights), ptr_f32(bias), ptr_f32(out), in_features, out_features)
+#         else:
+#             raise ValueError(f"Unknown variant: {variant}")
+#         return out
+#     else:
+#         raise ValueError("Only 1-D input supported for dense() in this wrapper")
+
+def dense(x: np.ndarray, weights: np.ndarray, bias: np.ndarray, variant="M8"):
+    """
+    x: (in_features,)
+    weights: (out_features, in_features)
+    bias: (out_features,)
+    """
+    assert x.ndim == 1, f"x must be 1D, got {x.shape}"
+    assert weights.ndim == 2, f"weights must be 2D, got {weights.shape}"
+    assert bias.ndim == 1, f"bias must be 1D, got {bias.shape}"
+
     assert x.dtype == np.float32
     assert weights.dtype == np.float32
+    assert bias.dtype == np.float32
+
     assert x.flags["C_CONTIGUOUS"]
     assert weights.flags["C_CONTIGUOUS"]
+    assert bias.flags["C_CONTIGUOUS"]
 
-    # x: (in_features,) or (batch, in_features)
-    if x.ndim == 1:
-        in_features = x.shape[0]
-        out_features = weights.shape[1]
-        out = np.zeros((out_features,), dtype=np.float32)
-        if bias is None:
-            bias = np.zeros((out_features,), dtype=np.float32)
-        if variant == "scalar":
-            dense_wrapper.dense_scalar(ptr_f32(x), ptr_f32(weights), ptr_f32(bias), ptr_f32(out), in_features, out_features)
-        elif variant == "M1":
-            dense_wrapper.dense_e32m1(ptr_f32(x), ptr_f32(weights), ptr_f32(bias), ptr_f32(out), in_features, out_features)
-        elif variant == "M2":
-            dense_wrapper.dense_e32m2(ptr_f32(x), ptr_f32(weights), ptr_f32(bias), ptr_f32(out), in_features, out_features)
-        elif variant == "M4":
-            dense_wrapper.dense_e32m4(ptr_f32(x), ptr_f32(weights), ptr_f32(bias), ptr_f32(out), in_features, out_features)
-        elif variant == "M8":
-            dense_wrapper.dense_e32m8(ptr_f32(x), ptr_f32(weights), ptr_f32(bias), ptr_f32(out), in_features, out_features)
-        else:
-            raise ValueError(f"Unknown variant: {variant}")
-        return out
+    out_features, in_features = weights.shape
+    assert x.shape[0] == in_features, f"x has {x.shape[0]} elems, expected {in_features}"
+    assert bias.shape[0] == out_features, f"bias has {bias.shape[0]}, expected {out_features}"
+
+    y = np.zeros((out_features,), dtype=np.float32)
+
+    if variant == "scalar":
+        dense_wrapper.dense_scalar(
+            ptr_f32(x),
+            ptr_f32(weights),
+            ptr_f32(bias),
+            ptr_f32(y),
+            in_features,
+            out_features,
+        )
+    elif variant == "M1":
+        dense_wrapper.dense_e32m1(
+            ptr_f32(x),
+            ptr_f32(weights),
+            ptr_f32(bias),
+            ptr_f32(y),
+            in_features,
+            out_features,
+        )
+    elif variant == "M2":
+        dense_wrapper.dense_e32m2(
+            ptr_f32(x),
+            ptr_f32(weights),
+            ptr_f32(bias),
+            ptr_f32(y),
+            in_features,
+            out_features,
+        )
+    elif variant == "M4":
+        dense_wrapper.dense_e32m4(
+            ptr_f32(x),
+            ptr_f32(weights),
+            ptr_f32(bias),
+            ptr_f32(y),
+            in_features,
+            out_features,
+        )
+    elif variant == "M8":
+        dense_wrapper.dense_e32m8(
+            ptr_f32(x),
+            ptr_f32(weights),
+            ptr_f32(bias),
+            ptr_f32(y),
+            in_features,
+            out_features,
+        )
     else:
-        raise ValueError("Only 1-D input supported for dense() in this wrapper")
+        raise ValueError(f"Unknown dense variant: {variant}")
+
+    return y
 
 def leaky_relu(x: np.ndarray, alpha: float = 0.01, variant="rvv"):
     assert x.dtype == np.float32
@@ -392,3 +467,28 @@ def conv2d(input: np.ndarray, kernel: np.ndarray, bias: np.ndarray = None, strid
             raise ValueError(f"Unknown variant: {variant}")
 
     return out
+
+def softmax(x: np.ndarray):
+    """
+    1D softmax over the last dimension.
+    Supports 1D (n,) or 2D (batch, n) by applying per row.
+    """
+    assert x.dtype == np.float32
+    assert x.flags["C_CONTIGUOUS"]
+
+    if x.ndim == 1:
+        n = x.shape[0]
+        y = np.zeros_like(x)
+        softmax_wrapper.softmax(ptr_f32(x), ptr_f32(y), n)
+        return y
+    elif x.ndim == 2:
+        batch, n = x.shape
+        y = np.zeros_like(x)
+        # call kernel per row
+        for b in range(batch):
+            xb = x[b]
+            yb = y[b]
+            softmax_wrapper.softmax(ptr_f32(xb), ptr_f32(yb), n)
+        return y
+    else:
+        raise ValueError("softmax() currently supports only 1D or 2D arrays")

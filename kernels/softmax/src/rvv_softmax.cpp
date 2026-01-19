@@ -2,6 +2,7 @@
 #include <cstddef>
 #include <cfloat>
 
+extern "C"{
 void softmax(
     const float* input,
     float* output,
@@ -28,3 +29,4 @@ void softmax(
     }
 }
 
+}
