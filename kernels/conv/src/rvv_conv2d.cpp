@@ -734,36 +734,35 @@ float* create_padded_input(const float* input, int H, int W) {
 // ============================================================================
 // M1 IMPLEMENTATION
 // ============================================================================
-
 void conv2d_3x3_m1(
-    const float* input,    // Input: HxW
-    const float* kernel,   // Kernel: 3x3 (9 elements, row-major)
-    float* output,         // Output: HxW (with padding)
-    int H,                 // Input height
-    int W,                 // Input width
-    bool use_padding       // If true, applies zero-padding
+    const float* input, // Input: HxW
+    const float* kernel, // Kernel: 3x3 (9 elements, row-major)
+    float* output, // Output: HxW (with padding)
+    int H, // Input height
+    int W, // Input width
+    bool use_padding // If true, applies zero-padding
 ) {
     // Create padded input if needed
     float* padded_input = nullptr;
     const float* proc_input = input;
     int H_proc = H;
     int W_proc = W;
-    
+   
     if (use_padding) {
         padded_input = create_padded_input(input, H, W);
         proc_input = padded_input;
         H_proc = H + 2;
         W_proc = W + 2;
     }
-    
+   
     const int out_h = use_padding ? H : (H - 2);
     const int out_w = use_padding ? W : (W - 2);
-    
+   
     // Load kernel weights into scalar registers for broadcasting
     float k00 = kernel[0], k01 = kernel[1], k02 = kernel[2];
     float k10 = kernel[3], k11 = kernel[4], k12 = kernel[5];
     float k20 = kernel[6], k21 = kernel[7], k22 = kernel[8];
-    
+   
     // Process each output row
     for (int oh = 0; oh < out_h; oh++) {
         // Get pointers to the 3 input rows needed for this output row
@@ -771,13 +770,13 @@ void conv2d_3x3_m1(
         const float* row1 = row0 + W_proc;
         const float* row2 = row1 + W_proc;
         float* out_row = output + oh * out_w;
-        
+       
         // Vectorized processing across output width with m1
         int ow = 0;
         while (ow < out_w) {
             // Set vector length (m1: LMUL=1, processes ~4 elements on VLEN=128)
             size_t vl = SET_VECTOR_LENGTH<float, M1>(out_w - ow);
-            
+           
             // ================================================================
             // LOAD PHASE: Load 9 vectors (3x3 neighborhood)
             // ================================================================
@@ -785,23 +784,23 @@ void conv2d_3x3_m1(
             vfloat32m1_t v00 = VECTOR_LOAD<float, M1>(row0 + ow, vl);
             vfloat32m1_t v01 = VECTOR_LOAD<float, M1>(row0 + ow + 1, vl);
             vfloat32m1_t v02 = VECTOR_LOAD<float, M1>(row0 + ow + 2, vl);
-            
+           
             // Row 1: Load 3 overlapping vectors
             vfloat32m1_t v10 = VECTOR_LOAD<float, M1>(row1 + ow, vl);
             vfloat32m1_t v11 = VECTOR_LOAD<float, M1>(row1 + ow + 1, vl);
             vfloat32m1_t v12 = VECTOR_LOAD<float, M1>(row1 + ow + 2, vl);
-            
+           
             // Row 2: Load 3 overlapping vectors
             vfloat32m1_t v20 = VECTOR_LOAD<float, M1>(row2 + ow, vl);
             vfloat32m1_t v21 = VECTOR_LOAD<float, M1>(row2 + ow + 1, vl);
             vfloat32m1_t v22 = VECTOR_LOAD<float, M1>(row2 + ow + 2, vl);
-            
+           
             // ================================================================
             // COMPUTE PHASE: Fused Multiply-Accumulate (FMA) chain
             // ================================================================
             // Start with first multiply
             vfloat32m1_t acc = VECTOR_MUL<float, M1>(v00, k00, vl);
-            
+           
             // Chain the remaining 8 FMAs (vector * scalar + accumulator)
             acc = VECTOR_FMACC<float, M1>(acc, k01, v01, vl);
             acc = VECTOR_FMACC<float, M1>(acc, k02, v02, vl);
@@ -811,56 +810,54 @@ void conv2d_3x3_m1(
             acc = VECTOR_FMACC<float, M1>(acc, k20, v20, vl);
             acc = VECTOR_FMACC<float, M1>(acc, k21, v21, vl);
             acc = VECTOR_FMACC<float, M1>(acc, k22, v22, vl);
-            
+           
             // ================================================================
             // STORE PHASE: Write results
             // ================================================================
             VECTOR_STORE<float, M1>(out_row + ow, acc, vl);
-            
+           
             // Move to next vector chunk
             ow += vl;
         }
     }
-    
+   
     // Cleanup
     if (padded_input) {
         free(padded_input);
     }
 }
-
 // ============================================================================
-// M2 IMPLEMENTATION 
+// M2 IMPLEMENTATION
 // ============================================================================
-
 void conv2d_3x3_m2(
-    const float* input,    // Input: HxW
-    const float* kernel,   // Kernel: 3x3 (9 elements, row-major)
-    float* output,         // Output: HxW (with padding) or (H-2)x(W-2)
-    int H,                 // Input height
-    int W,                 // Input width
-    bool use_padding       // If true, applies zero-padding
+    const float* input, // Input: HxW
+    const float* kernel, // Kernel: 3x3 (9 elements, row-major)
+    float* output, // Output: HxW (with padding) or (H-2)x(W-2)
+    int H, // Input height
+    int W, // Input width
+    bool use_padding // If true, applies zero-padding
 ) {
     // Create padded input if needed
     float* padded_input = nullptr;
     const float* proc_input = input;
     int H_proc = H;
     int W_proc = W;
-    
+   
     if (use_padding) {
         padded_input = create_padded_input(input, H, W);
         proc_input = padded_input;
         H_proc = H + 2;
         W_proc = W + 2;
     }
-    
+   
     const int out_h = use_padding ? H : (H - 2);
     const int out_w = use_padding ? W : (W - 2);
-    
+   
     // Load kernel weights into scalar registers
     float k00 = kernel[0], k01 = kernel[1], k02 = kernel[2];
     float k10 = kernel[3], k11 = kernel[4], k12 = kernel[5];
     float k20 = kernel[6], k21 = kernel[7], k22 = kernel[8];
-    
+   
     // Process each output row
     for (int oh = 0; oh < out_h; oh++) {
         // Get pointers to the 3 input rows needed
@@ -868,13 +865,13 @@ void conv2d_3x3_m2(
         const float* row1 = row0 + W_proc;
         const float* row2 = row1 + W_proc;
         float* out_row = output + oh * out_w;
-        
+       
         // Vectorized processing with m2 (2x throughput vs m1)
         int ow = 0;
         while (ow < out_w) {
             // Set vector length (m2: LMUL=2, processes ~8 elements on VLEN=128)
             size_t vl = SET_VECTOR_LENGTH<float, M2>(out_w - ow);
-            
+           
             // ================================================================
             // LOAD PHASE: Load 9 vectors with m2
             // ================================================================
@@ -882,17 +879,17 @@ void conv2d_3x3_m2(
             vfloat32m2_t v00 = VECTOR_LOAD<float, M2>(row0 + ow, vl);
             vfloat32m2_t v01 = VECTOR_LOAD<float, M2>(row0 + ow + 1, vl);
             vfloat32m2_t v02 = VECTOR_LOAD<float, M2>(row0 + ow + 2, vl);
-            
+           
             // Row 1: 3 vectors
             vfloat32m2_t v10 = VECTOR_LOAD<float, M2>(row1 + ow, vl);
             vfloat32m2_t v11 = VECTOR_LOAD<float, M2>(row1 + ow + 1, vl);
             vfloat32m2_t v12 = VECTOR_LOAD<float, M2>(row1 + ow + 2, vl);
-            
+           
             // Row 2: 3 vectors
             vfloat32m2_t v20 = VECTOR_LOAD<float, M2>(row2 + ow, vl);
             vfloat32m2_t v21 = VECTOR_LOAD<float, M2>(row2 + ow + 1, vl);
             vfloat32m2_t v22 = VECTOR_LOAD<float, M2>(row2 + ow + 2, vl);
-            
+           
             // ================================================================
             // COMPUTE PHASE: FMA chain with m2 vectors
             // ================================================================
@@ -905,98 +902,96 @@ void conv2d_3x3_m2(
             acc = VECTOR_FMACC<float, M2>(acc, k20, v20, vl);
             acc = VECTOR_FMACC<float, M2>(acc, k21, v21, vl);
             acc = VECTOR_FMACC<float, M2>(acc, k22, v22, vl);
-            
+           
             // ================================================================
             // STORE PHASE
             // ================================================================
             VECTOR_STORE<float, M2>(out_row + ow, acc, vl);
-            
+           
             ow += vl;
         }
     }
-    
+   
     // Cleanup
     if (padded_input) {
         free(padded_input);
     }
 }
-
 // ============================================================================
 // M4 IMPLEMENTATION
 // ============================================================================
-
 void conv2d_3x3_m4(
-    const float* input,    // Input: HxW
-    const float* kernel,   // Kernel: 3x3 (9 elements, row-major)
-    float* output,         // Output: HxW (with padding) or (H-2)x(W-2)
-    int H,                 // Input height
-    int W,                 // Input width
-    bool use_padding       // If true, applies zero-padding
+    const float* input, // Input: HxW
+    const float* kernel, // Kernel: 3x3 (9 elements, row-major)
+    float* output, // Output: HxW (with padding) or (H-2)x(W-2)
+    int H, // Input height
+    int W, // Input width
+    bool use_padding // If true, applies zero-padding
 ) {
     float* padded_input = nullptr;
     const float* proc_input = input;
     int H_proc = H;
     int W_proc = W;
-    
+   
     if (use_padding) {
         padded_input = create_padded_input(input, H, W);
         proc_input = padded_input;
         H_proc = H + 2;
         W_proc = W + 2;
     }
-    
+   
     const int out_h = use_padding ? H : (H - 2);
     const int out_w = use_padding ? W : (W - 2);
-    
+   
     float k00 = kernel[0], k01 = kernel[1], k02 = kernel[2];
     float k10 = kernel[3], k11 = kernel[4], k12 = kernel[5];
     float k20 = kernel[6], k21 = kernel[7], k22 = kernel[8];
-
     for (int oh = 0; oh < out_h; oh++) {
         const float* row0 = proc_input + oh * W_proc;
         const float* row1 = row0 + W_proc;
         const float* row2 = row1 + W_proc;
         float* out_row = output + oh * out_w;
-
         int ow = 0;
         while (ow < out_w) {
             size_t vl = SET_VECTOR_LENGTH<float, M4>(out_w - ow);
-
-            vfloat32m4_t v00 = VECTOR_LOAD<float, M4>(row0 + ow, vl);
-            vfloat32m4_t v01 = VECTOR_LOAD<float, M4>(row0 + ow + 1, vl);
-            vfloat32m4_t v02 = VECTOR_LOAD<float, M4>(row0 + ow + 2, vl);
-
-            vfloat32m4_t v10 = VECTOR_LOAD<float, M4>(row1 + ow, vl);
-            vfloat32m4_t v11 = VECTOR_LOAD<float, M4>(row1 + ow + 1, vl);
-            vfloat32m4_t v12 = VECTOR_LOAD<float, M4>(row1 + ow + 2, vl);
-
-            vfloat32m4_t v20 = VECTOR_LOAD<float, M4>(row2 + ow, vl);
-            vfloat32m4_t v21 = VECTOR_LOAD<float, M4>(row2 + ow + 1, vl);
-            vfloat32m4_t v22 = VECTOR_LOAD<float, M4>(row2 + ow + 2, vl);
-
-            vfloat32m4_t acc = VECTOR_MUL<float, M4>(v00, k00, vl);
-            acc = VECTOR_FMACC<float, M4>(acc, k01, v01, vl);
-            acc = VECTOR_FMACC<float, M4>(acc, k02, v02, vl);
-            acc = VECTOR_FMACC<float, M4>(acc, k10, v10, vl);
-            acc = VECTOR_FMACC<float, M4>(acc, k11, v11, vl);
-            acc = VECTOR_FMACC<float, M4>(acc, k12, v12, vl);
-            acc = VECTOR_FMACC<float, M4>(acc, k20, v20, vl);
-            acc = VECTOR_FMACC<float, M4>(acc, k21, v21, vl);
-            acc = VECTOR_FMACC<float, M4>(acc, k22, v22, vl);
-
+           
+            // Staged load and compute to reduce register usage
+            vfloat32m4_t acc = VECTOR_LOAD<float, M4>(row0 + ow, vl);
+            acc = VECTOR_MUL<float, M4>(acc, k00, vl);
+           
+            vfloat32m4_t temp = VECTOR_LOAD<float, M4>(row0 + ow + 1, vl);
+            acc = VECTOR_FMACC<float, M4>(acc, k01, temp, vl);
+           
+            temp = VECTOR_LOAD<float, M4>(row0 + ow + 2, vl);
+            acc = VECTOR_FMACC<float, M4>(acc, k02, temp, vl);
+           
+            temp = VECTOR_LOAD<float, M4>(row1 + ow, vl);
+            acc = VECTOR_FMACC<float, M4>(acc, k10, temp, vl);
+           
+            temp = VECTOR_LOAD<float, M4>(row1 + ow + 1, vl);
+            acc = VECTOR_FMACC<float, M4>(acc, k11, temp, vl);
+           
+            temp = VECTOR_LOAD<float, M4>(row1 + ow + 2, vl);
+            acc = VECTOR_FMACC<float, M4>(acc, k12, temp, vl);
+           
+            temp = VECTOR_LOAD<float, M4>(row2 + ow, vl);
+            acc = VECTOR_FMACC<float, M4>(acc, k20, temp, vl);
+           
+            temp = VECTOR_LOAD<float, M4>(row2 + ow + 1, vl);
+            acc = VECTOR_FMACC<float, M4>(acc, k21, temp, vl);
+           
+            temp = VECTOR_LOAD<float, M4>(row2 + ow + 2, vl);
+            acc = VECTOR_FMACC<float, M4>(acc, k22, temp, vl);
+           
             VECTOR_STORE<float, M4>(out_row + ow, acc, vl);
-
             ow += vl;
         }
     }
-
     if (padded_input) free(padded_input);
 }
-
 // ============================================================================
-// M8 IMPLEMENTATION 
+// M8 IMPLEMENTATION
 // ============================================================================
-
 void conv2d_3x3_m8(
     const float* input,
     const float* kernel,
@@ -1009,69 +1004,66 @@ void conv2d_3x3_m8(
     const float* proc_input = input;
     int H_proc = H;
     int W_proc = W;
-
     if (use_padding) {
         padded_input = create_padded_input(input, H, W);
         proc_input = padded_input;
         H_proc = H + 2;
         W_proc = W + 2;
     }
-
     const int out_h = use_padding ? H : (H - 2);
     const int out_w = use_padding ? W : (W - 2);
-
     float k00 = kernel[0], k01 = kernel[1], k02 = kernel[2];
     float k10 = kernel[3], k11 = kernel[4], k12 = kernel[5];
     float k20 = kernel[6], k21 = kernel[7], k22 = kernel[8];
-
     for (int oh = 0; oh < out_h; oh++) {
         const float* row0 = proc_input + oh * W_proc;
         const float* row1 = row0 + W_proc;
         const float* row2 = row1 + W_proc;
         float* out_row = output + oh * out_w;
-
         int ow = 0;
         while (ow < out_w) {
             size_t vl = SET_VECTOR_LENGTH<float, M8>(out_w - ow);
-
-            vfloat32m8_t v00 = VECTOR_LOAD<float, M8>(row0 + ow, vl);
-            vfloat32m8_t v01 = VECTOR_LOAD<float, M8>(row0 + ow + 1, vl);
-            vfloat32m8_t v02 = VECTOR_LOAD<float, M8>(row0 + ow + 2, vl);
-
-            vfloat32m8_t v10 = VECTOR_LOAD<float, M8>(row1 + ow, vl);
-            vfloat32m8_t v11 = VECTOR_LOAD<float, M8>(row1 + ow + 1, vl);
-            vfloat32m8_t v12 = VECTOR_LOAD<float, M8>(row1 + ow + 2, vl);
-
-            vfloat32m8_t v20 = VECTOR_LOAD<float, M8>(row2 + ow, vl);
-            vfloat32m8_t v21 = VECTOR_LOAD<float, M8>(row2 + ow + 1, vl);
-            vfloat32m8_t v22 = VECTOR_LOAD<float, M8>(row2 + ow + 2, vl);
-
-            vfloat32m8_t acc = VECTOR_MUL<float, M8>(v00, k00, vl);
-            acc = VECTOR_FMACC<float, M8>(acc, k01, v01, vl);
-            acc = VECTOR_FMACC<float, M8>(acc, k02, v02, vl);
-            acc = VECTOR_FMACC<float, M8>(acc, k10, v10, vl);
-            acc = VECTOR_FMACC<float, M8>(acc, k11, v11, vl);
-            acc = VECTOR_FMACC<float, M8>(acc, k12, v12, vl);
-            acc = VECTOR_FMACC<float, M8>(acc, k20, v20, vl);
-            acc = VECTOR_FMACC<float, M8>(acc, k21, v21, vl);
-            acc = VECTOR_FMACC<float, M8>(acc, k22, v22, vl);
-
+           
+            // Staged load and compute to reduce register usage
+            vfloat32m8_t acc = VECTOR_LOAD<float, M8>(row0 + ow, vl);
+            acc = VECTOR_MUL<float, M8>(acc, k00, vl);
+           
+            vfloat32m8_t temp = VECTOR_LOAD<float, M8>(row0 + ow + 1, vl);
+            acc = VECTOR_FMACC<float, M8>(acc, k01, temp, vl);
+           
+            temp = VECTOR_LOAD<float, M8>(row0 + ow + 2, vl);
+            acc = VECTOR_FMACC<float, M8>(acc, k02, temp, vl);
+           
+            temp = VECTOR_LOAD<float, M8>(row1 + ow, vl);
+            acc = VECTOR_FMACC<float, M8>(acc, k10, temp, vl);
+           
+            temp = VECTOR_LOAD<float, M8>(row1 + ow + 1, vl);
+            acc = VECTOR_FMACC<float, M8>(acc, k11, temp, vl);
+           
+            temp = VECTOR_LOAD<float, M8>(row1 + ow + 2, vl);
+            acc = VECTOR_FMACC<float, M8>(acc, k12, temp, vl);
+           
+            temp = VECTOR_LOAD<float, M8>(row2 + ow, vl);
+            acc = VECTOR_FMACC<float, M8>(acc, k20, temp, vl);
+           
+            temp = VECTOR_LOAD<float, M8>(row2 + ow + 1, vl);
+            acc = VECTOR_FMACC<float, M8>(acc, k21, temp, vl);
+           
+            temp = VECTOR_LOAD<float, M8>(row2 + ow + 2, vl);
+            acc = VECTOR_FMACC<float, M8>(acc, k22, temp, vl);
+           
             VECTOR_STORE<float, M8>(out_row + ow, acc, vl);
-
             ow += vl;
         }
     }
-
     if (padded_input) free(padded_input);
 }
 
 
-/********************************* 3x3 Filter-Specific BATCHED Vectorized Versions (Cache-optimized) *********************************/
-
+/********************** 3x3 Filter-Specific BATCHED Vectorized Versions (Cache-optimized) ***********************/
 // ============================================================================
 // MULTI-ROW BATCHED M2 ( for edge devices)
 // ============================================================================
-
 void conv2d_3x3_m2_batched(
     const float* input,
     const float* kernel,
@@ -1079,84 +1071,86 @@ void conv2d_3x3_m2_batched(
     int H,
     int W,
     bool use_padding,
-    int batch_rows = 4    // Process N output rows together
+    int batch_rows = 4 // Process N output rows together
 ) {
     float* padded_input = nullptr;
     const float* proc_input = input;
     int H_proc = H;
     int W_proc = W;
-    
+   
     if (use_padding) {
         padded_input = create_padded_input(input, H, W);
         proc_input = padded_input;
         H_proc = H + 2;
         W_proc = W + 2;
     }
-    
+   
     const int out_h = use_padding ? H : (H - 2);
     const int out_w = use_padding ? W : (W - 2);
-    
+   
     float k00 = kernel[0], k01 = kernel[1], k02 = kernel[2];
     float k10 = kernel[3], k11 = kernel[4], k12 = kernel[5];
     float k20 = kernel[6], k21 = kernel[7], k22 = kernel[8];
-    
+   
     // Process output rows in batches for better cache reuse
     for (int oh_base = 0; oh_base < out_h; oh_base += batch_rows) {
-        int rows_to_process = (oh_base + batch_rows <= out_h) ? 
+        int rows_to_process = (oh_base + batch_rows <= out_h) ?
                               batch_rows : (out_h - oh_base);
-        
+       
         // For each column position (vectorized)
         for (int ow = 0; ow < out_w; ) {
             size_t vl = SET_VECTOR_LENGTH<float, M2>(out_w - ow);
-            
+           
             // Process each row in the current batch
             for (int r = 0; r < rows_to_process; r++) {
                 int oh = oh_base + r;
                 const float* row0 = proc_input + oh * W_proc;
                 const float* row1 = row0 + W_proc;
                 const float* row2 = row1 + W_proc;
-                
-                // Load 9 vectors
-                vfloat32m2_t v00 = VECTOR_LOAD<float, M2>(row0 + ow, vl);
-                vfloat32m2_t v01 = VECTOR_LOAD<float, M2>(row0 + ow + 1, vl);
-                vfloat32m2_t v02 = VECTOR_LOAD<float, M2>(row0 + ow + 2, vl);
-                
-                vfloat32m2_t v10 = VECTOR_LOAD<float, M2>(row1 + ow, vl);
-                vfloat32m2_t v11 = VECTOR_LOAD<float, M2>(row1 + ow + 1, vl);
-                vfloat32m2_t v12 = VECTOR_LOAD<float, M2>(row1 + ow + 2, vl);
-                
-                vfloat32m2_t v20 = VECTOR_LOAD<float, M2>(row2 + ow, vl);
-                vfloat32m2_t v21 = VECTOR_LOAD<float, M2>(row2 + ow + 1, vl);
-                vfloat32m2_t v22 = VECTOR_LOAD<float, M2>(row2 + ow + 2, vl);
-                
-                // Compute
-                vfloat32m2_t acc = VECTOR_MUL<float, M2>(v00, k00, vl);
-                acc = VECTOR_FMACC<float, M2>(acc, k01, v01, vl);
-                acc = VECTOR_FMACC<float, M2>(acc, k02, v02, vl);
-                acc = VECTOR_FMACC<float, M2>(acc, k10, v10, vl);
-                acc = VECTOR_FMACC<float, M2>(acc, k11, v11, vl);
-                acc = VECTOR_FMACC<float, M2>(acc, k12, v12, vl);
-                acc = VECTOR_FMACC<float, M2>(acc, k20, v20, vl);
-                acc = VECTOR_FMACC<float, M2>(acc, k21, v21, vl);
-                acc = VECTOR_FMACC<float, M2>(acc, k22, v22, vl);
-                
+               
+                // Staged load and compute to reduce register usage
+                vfloat32m2_t acc = VECTOR_LOAD<float, M2>(row0 + ow, vl);
+                acc = VECTOR_MUL<float, M2>(acc, k00, vl);
+               
+                vfloat32m2_t temp = VECTOR_LOAD<float, M2>(row0 + ow + 1, vl);
+                acc = VECTOR_FMACC<float, M2>(acc, k01, temp, vl);
+               
+                temp = VECTOR_LOAD<float, M2>(row0 + ow + 2, vl);
+                acc = VECTOR_FMACC<float, M2>(acc, k02, temp, vl);
+               
+                temp = VECTOR_LOAD<float, M2>(row1 + ow, vl);
+                acc = VECTOR_FMACC<float, M2>(acc, k10, temp, vl);
+               
+                temp = VECTOR_LOAD<float, M2>(row1 + ow + 1, vl);
+                acc = VECTOR_FMACC<float, M2>(acc, k11, temp, vl);
+               
+                temp = VECTOR_LOAD<float, M2>(row1 + ow + 2, vl);
+                acc = VECTOR_FMACC<float, M2>(acc, k12, temp, vl);
+               
+                temp = VECTOR_LOAD<float, M2>(row2 + ow, vl);
+                acc = VECTOR_FMACC<float, M2>(acc, k20, temp, vl);
+               
+                temp = VECTOR_LOAD<float, M2>(row2 + ow + 1, vl);
+                acc = VECTOR_FMACC<float, M2>(acc, k21, temp, vl);
+               
+                temp = VECTOR_LOAD<float, M2>(row2 + ow + 2, vl);
+                acc = VECTOR_FMACC<float, M2>(acc, k22, temp, vl);
+               
                 // Store
                 VECTOR_STORE<float, M2>(output + oh * out_w + ow, acc, vl);
             }
-            
+           
             ow += vl;
         }
     }
-    
+   
     if (padded_input) {
         free(padded_input);
     }
 }
-
 // ============================================================================
 // M4 BATCHED
 // ============================================================================
-
 void conv2d_3x3_m4_batched(
     const float* input,
     const float* kernel,
@@ -1170,70 +1164,66 @@ void conv2d_3x3_m4_batched(
     const float* proc_input = input;
     int H_proc = H;
     int W_proc = W;
-
     if (use_padding) {
         padded_input = create_padded_input(input, H, W);
         proc_input = padded_input;
         H_proc = H + 2;
         W_proc = W + 2;
     }
-
     const int out_h = use_padding ? H : (H - 2);
     const int out_w = use_padding ? W : (W - 2);
-
     float k00 = kernel[0], k01 = kernel[1], k02 = kernel[2];
     float k10 = kernel[3], k11 = kernel[4], k12 = kernel[5];
     float k20 = kernel[6], k21 = kernel[7], k22 = kernel[8];
-
     for (int oh_base = 0; oh_base < out_h; oh_base += batch_rows) {
         int rows_to_process = (oh_base + batch_rows <= out_h) ?
                               batch_rows : (out_h - oh_base);
-
         for (int ow = 0; ow < out_w; ) {
             size_t vl = SET_VECTOR_LENGTH<float, M4>(out_w - ow);
-
             for (int r = 0; r < rows_to_process; r++) {
                 int oh = oh_base + r;
                 const float* row0 = proc_input + oh * W_proc;
                 const float* row1 = row0 + W_proc;
                 const float* row2 = row1 + W_proc;
-
-                vfloat32m4_t v00 = VECTOR_LOAD<float, M4>(row0 + ow, vl);
-                vfloat32m4_t v01 = VECTOR_LOAD<float, M4>(row0 + ow + 1, vl);
-                vfloat32m4_t v02 = VECTOR_LOAD<float, M4>(row0 + ow + 2, vl);
-
-                vfloat32m4_t v10 = VECTOR_LOAD<float, M4>(row1 + ow, vl);
-                vfloat32m4_t v11 = VECTOR_LOAD<float, M4>(row1 + ow + 1, vl);
-                vfloat32m4_t v12 = VECTOR_LOAD<float, M4>(row1 + ow + 2, vl);
-
-                vfloat32m4_t v20 = VECTOR_LOAD<float, M4>(row2 + ow, vl);
-                vfloat32m4_t v21 = VECTOR_LOAD<float, M4>(row2 + ow + 1, vl);
-                vfloat32m4_t v22 = VECTOR_LOAD<float, M4>(row2 + ow + 2, vl);
-
-                vfloat32m4_t acc = VECTOR_MUL<float, M4>(v00, k00, vl);
-                acc = VECTOR_FMACC<float, M4>(acc, k01, v01, vl);
-                acc = VECTOR_FMACC<float, M4>(acc, k02, v02, vl);
-                acc = VECTOR_FMACC<float, M4>(acc, k10, v10, vl);
-                acc = VECTOR_FMACC<float, M4>(acc, k11, v11, vl);
-                acc = VECTOR_FMACC<float, M4>(acc, k12, v12, vl);
-                acc = VECTOR_FMACC<float, M4>(acc, k20, v20, vl);
-                acc = VECTOR_FMACC<float, M4>(acc, k21, v21, vl);
-                acc = VECTOR_FMACC<float, M4>(acc, k22, v22, vl);
-
+               
+                // Staged load and compute to reduce register usage
+                vfloat32m4_t acc = VECTOR_LOAD<float, M4>(row0 + ow, vl);
+                acc = VECTOR_MUL<float, M4>(acc, k00, vl);
+               
+                vfloat32m4_t temp = VECTOR_LOAD<float, M4>(row0 + ow + 1, vl);
+                acc = VECTOR_FMACC<float, M4>(acc, k01, temp, vl);
+               
+                temp = VECTOR_LOAD<float, M4>(row0 + ow + 2, vl);
+                acc = VECTOR_FMACC<float, M4>(acc, k02, temp, vl);
+               
+                temp = VECTOR_LOAD<float, M4>(row1 + ow, vl);
+                acc = VECTOR_FMACC<float, M4>(acc, k10, temp, vl);
+               
+                temp = VECTOR_LOAD<float, M4>(row1 + ow + 1, vl);
+                acc = VECTOR_FMACC<float, M4>(acc, k11, temp, vl);
+               
+                temp = VECTOR_LOAD<float, M4>(row1 + ow + 2, vl);
+                acc = VECTOR_FMACC<float, M4>(acc, k12, temp, vl);
+               
+                temp = VECTOR_LOAD<float, M4>(row2 + ow, vl);
+                acc = VECTOR_FMACC<float, M4>(acc, k20, temp, vl);
+               
+                temp = VECTOR_LOAD<float, M4>(row2 + ow + 1, vl);
+                acc = VECTOR_FMACC<float, M4>(acc, k21, temp, vl);
+               
+                temp = VECTOR_LOAD<float, M4>(row2 + ow + 2, vl);
+                acc = VECTOR_FMACC<float, M4>(acc, k22, temp, vl);
+               
                 VECTOR_STORE<float, M4>(output + oh * out_w + ow, acc, vl);
             }
-
             ow += vl;
         }
     }
-
     if (padded_input) free(padded_input);
 }
-
 // ============================================================================
 // M8 BATCHED
 // ============================================================================
-
 void conv2d_3x3_m8_batched(
     const float* input,
     const float* kernel,
@@ -1247,63 +1237,99 @@ void conv2d_3x3_m8_batched(
     const float* proc_input = input;
     int H_proc = H;
     int W_proc = W;
-
     if (use_padding) {
         padded_input = create_padded_input(input, H, W);
         proc_input = padded_input;
         H_proc = H + 2;
         W_proc = W + 2;
     }
-
     const int out_h = use_padding ? H : (H - 2);
     const int out_w = use_padding ? W : (W - 2);
-
     float k00 = kernel[0], k01 = kernel[1], k02 = kernel[2];
     float k10 = kernel[3], k11 = kernel[4], k12 = kernel[5];
     float k20 = kernel[6], k21 = kernel[7], k22 = kernel[8];
-
     for (int oh_base = 0; oh_base < out_h; oh_base += batch_rows) {
         int rows_to_process = (oh_base + batch_rows <= out_h) ?
                               batch_rows : (out_h - oh_base);
-
         for (int ow = 0; ow < out_w; ) {
             size_t vl = SET_VECTOR_LENGTH<float, M8>(out_w - ow);
-
-            for (int r = 0; r < rows_to_process; r++) {
-                int oh = oh_base + r;
-                const float* row0 = proc_input + oh * W_proc;
-                const float* row1 = row0 + W_proc;
-                const float* row2 = row1 + W_proc;
-
-                vfloat32m8_t v00 = VECTOR_LOAD<float, M8>(row0 + ow, vl);
-                vfloat32m8_t v01 = VECTOR_LOAD<float, M8>(row0 + ow + 1, vl);
-                vfloat32m8_t v02 = VECTOR_LOAD<float, M8>(row0 + ow + 2, vl);
-
-                vfloat32m8_t v10 = VECTOR_LOAD<float, M8>(row1 + ow, vl);
-                vfloat32m8_t v11 = VECTOR_LOAD<float, M8>(row1 + ow + 1, vl);
-                vfloat32m8_t v12 = VECTOR_LOAD<float, M8>(row1 + ow + 2, vl);
-
-                vfloat32m8_t v20 = VECTOR_LOAD<float, M8>(row2 + ow, vl);
-                vfloat32m8_t v21 = VECTOR_LOAD<float, M8>(row2 + ow + 1, vl);
-                vfloat32m8_t v22 = VECTOR_LOAD<float, M8>(row2 + ow + 2, vl);
-
-                vfloat32m8_t acc = VECTOR_MUL<float, M8>(v00, k00, vl);
-                acc = VECTOR_FMACC<float, M8>(acc, k01, v01, vl);
-                acc = VECTOR_FMACC<float, M8>(acc, k02, v02, vl);
-                acc = VECTOR_FMACC<float, M8>(acc, k10, v10, vl);
-                acc = VECTOR_FMACC<float, M8>(acc, k11, v11, vl);
-                acc = VECTOR_FMACC<float, M8>(acc, k12, v12, vl);
-                acc = VECTOR_FMACC<float, M8>(acc, k20, v20, vl);
-                acc = VECTOR_FMACC<float, M8>(acc, k21, v21, vl);
-                acc = VECTOR_FMACC<float, M8>(acc, k22, v22, vl);
-
-                VECTOR_STORE<float, M8>(output + oh * out_w + ow, acc, vl);
+            for (int r = 0; r < rows_to_process; r += 2) {
+                int num_rows_this = (r + 2 <= rows_to_process) ? 2 : 1;
+                int oh1 = oh_base + r;
+                const float* row0_1 = proc_input + oh1 * W_proc;
+                const float* row1_1 = row0_1 + W_proc;
+                const float* row2_1 = row1_1 + W_proc;
+               
+                // Staged for first row
+                vfloat32m8_t acc1 = VECTOR_LOAD<float, M8>(row0_1 + ow, vl);
+                acc1 = VECTOR_MUL<float, M8>(acc1, k00, vl);
+               
+                vfloat32m8_t temp = VECTOR_LOAD<float, M8>(row0_1 + ow + 1, vl);
+                acc1 = VECTOR_FMACC<float, M8>(acc1, k01, temp, vl);
+               
+                temp = VECTOR_LOAD<float, M8>(row0_1 + ow + 2, vl);
+                acc1 = VECTOR_FMACC<float, M8>(acc1, k02, temp, vl);
+               
+                temp = VECTOR_LOAD<float, M8>(row1_1 + ow, vl);
+                acc1 = VECTOR_FMACC<float, M8>(acc1, k10, temp, vl);
+               
+                temp = VECTOR_LOAD<float, M8>(row1_1 + ow + 1, vl);
+                acc1 = VECTOR_FMACC<float, M8>(acc1, k11, temp, vl);
+               
+                temp = VECTOR_LOAD<float, M8>(row1_1 + ow + 2, vl);
+                acc1 = VECTOR_FMACC<float, M8>(acc1, k12, temp, vl);
+               
+                temp = VECTOR_LOAD<float, M8>(row2_1 + ow, vl);
+                acc1 = VECTOR_FMACC<float, M8>(acc1, k20, temp, vl);
+               
+                temp = VECTOR_LOAD<float, M8>(row2_1 + ow + 1, vl);
+                acc1 = VECTOR_FMACC<float, M8>(acc1, k21, temp, vl);
+               
+                temp = VECTOR_LOAD<float, M8>(row2_1 + ow + 2, vl);
+                acc1 = VECTOR_FMACC<float, M8>(acc1, k22, temp, vl);
+               
+                VECTOR_STORE<float, M8>(output + oh1 * out_w + ow, acc1, vl);
+               
+                if (num_rows_this == 2) {
+                    int oh2 = oh1 + 1;
+                    const float* row0_2 = proc_input + oh2 * W_proc;
+                    const float* row1_2 = row0_2 + W_proc;
+                    const float* row2_2 = row1_2 + W_proc;
+                   
+                    // Staged for second row
+                    vfloat32m8_t acc2 = VECTOR_LOAD<float, M8>(row0_2 + ow, vl);
+                    acc2 = VECTOR_MUL<float, M8>(acc2, k00, vl);
+                   
+                    temp = VECTOR_LOAD<float, M8>(row0_2 + ow + 1, vl);
+                    acc2 = VECTOR_FMACC<float, M8>(acc2, k01, temp, vl);
+                   
+                    temp = VECTOR_LOAD<float, M8>(row0_2 + ow + 2, vl);
+                    acc2 = VECTOR_FMACC<float, M8>(acc2, k02, temp, vl);
+                   
+                    temp = VECTOR_LOAD<float, M8>(row1_2 + ow, vl);
+                    acc2 = VECTOR_FMACC<float, M8>(acc2, k10, temp, vl);
+                   
+                    temp = VECTOR_LOAD<float, M8>(row1_2 + ow + 1, vl);
+                    acc2 = VECTOR_FMACC<float, M8>(acc2, k11, temp, vl);
+                   
+                    temp = VECTOR_LOAD<float, M8>(row1_2 + ow + 2, vl);
+                    acc2 = VECTOR_FMACC<float, M8>(acc2, k12, temp, vl);
+                   
+                    temp = VECTOR_LOAD<float, M8>(row2_2 + ow, vl);
+                    acc2 = VECTOR_FMACC<float, M8>(acc2, k20, temp, vl);
+                   
+                    temp = VECTOR_LOAD<float, M8>(row2_2 + ow + 1, vl);
+                    acc2 = VECTOR_FMACC<float, M8>(acc2, k21, temp, vl);
+                   
+                    temp = VECTOR_LOAD<float, M8>(row2_2 + ow + 2, vl);
+                    acc2 = VECTOR_FMACC<float, M8>(acc2, k22, temp, vl);
+                   
+                    VECTOR_STORE<float, M8>(output + oh2 * out_w + ow, acc2, vl);
+                }
             }
-
             ow += vl;
         }
     }
-
     if (padded_input) free(padded_input);
 }
 

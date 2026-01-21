@@ -35,3 +35,45 @@ C Vectorized (e32m4)     3.8147e-05          127.627
 C Vectorized (e32m8)     3.8147e-05          127.627             
 C IM2COL + GEMM (m8)     6.29425e-05         123.99  
 ```
+
+```bash
+omar@omar-Legion-5:~/Repos/RVV64_Library/kernels/conv$ make run_3x3 
+Conv2D 3x3 Test: Input HxW=128x128, Kernel=3x3, Stride=(1,1), Pad=(1,1), use_padding=1
+Output: 128x128
+
+Input range: [-0.0499998, 0.049997]
+Kernel range: [-0.0252116, 0.0483024]
+
+Running implementations...
+==================================================
+
+1. M1 (non-batched)... Done
+2. M2 (non-batched)... Done
+3. M4 (non-batched)... Done
+4. M8 (non-batched)... Done
+5. M2 (batched, batch_rows=4)... Done
+6. M4 (batched, batch_rows=4)... Done
+7. M8 (batched, batch_rows=4)... Done
+
+All implementations completed.
+
+3x3 Conv2D: Input HxW=128x128, Kernel=3x3, Pad=(1,1), use_padding=1
+Output: 128x128
+Total operations: 294,912 FLOPs
+
+Implementation           Max Abs Error     SNR (dB)       Status    
+----------------------------------------------------------------------
+ONNX (Reference)         0                 inf            PASS      
+M1 (non-batched)         0                 inf            PASS      
+M2 (non-batched)         0                 inf            PASS      
+M4 (non-batched)         0                 inf            PASS      
+M8 (non-batched)         0                 inf            PASS      
+M2 (batched)             0                 inf            PASS      
+M4 (batched)             0                 inf            PASS      
+M8 (batched)             0                 inf            PASS      
+
+Value Ranges:
+ONNX Ref: [-0.007526, 0.007060]
+M1:       [-0.007526, 0.007060]
+M8 batch: [-0.007526, 0.007060]
+```

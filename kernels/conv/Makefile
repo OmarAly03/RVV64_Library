@@ -20,6 +20,13 @@ run:
 	@qemu-riscv64 -cpu rv64,v=true $(TARGET) $(SIZE)
 	@python3 main.py $(SIZE)
 
+build_3x3: run_conv2d_3x3.cpp src/rvv_conv2d.cpp src/utils.cpp
+	@$(CC) $(FLAGS) $(INCLUDES) -o ./output_files/run_conv2d_3x3 run_conv2d_3x3.cpp src/rvv_conv2d.cpp src/utils.cpp
+
+run_3x3:
+	@qemu-riscv64 -cpu rv64,v=true ./output_files/run_conv2d_3x3 $(SIZE)
+	@python3 test_3x3.py $(SIZE)
+	
 clean:
 	rm -f $(TARGET)
 
