@@ -107,66 +107,83 @@ pip install -r requirements.txt
 
 ---
 
-## Benchmarks
+## 🚀 Performance Benchmarks
 
-### 1. Compute-Intensive Linear Operators
+Our RVV-optimized kernels deliver significant performance improvements over scalar implementations.  
+The highest speedups obtained (RVV vs. scalar) are:
 
-| Kernel | Called Name | Best Implementation | Speedup |
-|--------|-------------|---------------------|---------|
-| `matmul` | Matrix Multiplication | Vector (M2) unrolled (64×64) | **70.27×** |
-| `dense` | Fully Connected Layer | Vector (M8) (256×256) | **4.01×** |
+| Kernel              | Speedup  |
+|---------------------|----------|
+| Matrix Multiplication | **70.27×** |
+| Leaky ReLU            | **36.02×** |
+| Batch Normalization   | **25.01×** |
 
----
+These measurements were obtained on a **soft-core RISC-V vector processor** implemented by the **pulp-platform**:
 
-### 2. Pointwise Activation & Arithmetic Kernels
+-  The PULP Ara is a 64-bit Vector Unit, compatible with the RISC-V Vector Extension Version 1.0, working as a coprocessor to CORE-V's CVA6 core  
+- Repository: [pulp-platform/ara](https://github.com/pulp-platform/ara)
+- Configuration used for our benchmarks:
+  - **Vector length (VLEN): 1024 bits**
+  - **Number of vector lanes: 4**
 
-| Kernel | Called Name | Best Implementation | Speedup |
-|--------|-------------|---------------------|---------|
-| `relu` | Rectified Linear Unit | Vector (M8) (256×256) | **20.08×** |
-| `leaky_relu` | Leaky Rectified Linear Unit | Vector (M8) (256×256) | **36.02×** |
-| `bias_add` | Bias Addition | Vector (M8) (1×8×64×64) | **21.75×** |
-| `tensor_add` | Element-wise Tensor Addition | Vector (M8) (65,536) | **19.57×** |
-
----
-
-### 3. Statistical & Normalization Kernels
-
-| Kernel | Called Name | Best Implementation | Speedup |
-|--------|-------------|---------------------|---------|
-| `batch_norm` | Batch Normalization | Vector (M8) ([1,128,32]) | **25.01×** |
+> [!TIP]
+> For the complete results across all kernels and more detailed benchmark methodology, see **[BENCHMARKS.md](./BENCHMARKS.md)**.
 
 ---
 
-### 4. Spatial Reduction Kernels
+## 🖥️ RISC-V Ubuntu Image Setup (QEMU System Mode)
 
-| Kernel | Called Name | Best Implementation | Speedup |
-|--------|-------------|---------------------|---------|
-| `maxpool` | Max Pooling | Vector (M8) (64×64, stride 1) | **23.48×** |
+If you want to work with the `pyv/` Python wrappers, you'll need a Linux system capable of running a Python interpreter on RISC-V architecture. When actual RISC-V hardware isn't available, we recommend using an Ubuntu image specifically built for RISC-V on QEMU.
 
----
+### Prerequisites Installation
 
-## Image Installation
-- Download the Ubuntu 24.04.3 LTS (Noble Numbat) RISC-V for QEMU from [HERE](https://canonical-ubuntu-hardware-support.readthedocs-hosted.com/boards/how-to/qemu-riscv/)
-- Install the prerequisites
-	```bash
-	sudo apt update
-	sudo apt install opensbi qemu-system-riscv64 qemu-efi-riscv64 u-boot-qemu
-	```
-- Unpack the image:
+First, install the required packages:
+```bash
+sudo apt update
+sudo apt install opensbi qemu-system-riscv64 qemu-efi-riscv64 u-boot-qemu
+```
+
+### Download and Prepare the Ubuntu Image
+
+1. Download **Ubuntu 24.04.3 LTS (Noble Numbat) RISC-V** for QEMU from the [official documentation](https://canonical-ubuntu-hardware-support.readthedocs-hosted.com/boards/how-to/qemu-riscv/)
+
+2. Extract the image:
 	```bash
 	xz -dk ubuntu-*-preinstalled-server-riscv64.img.xz
 	```
 
-- To run the image with qemu-system
-	```bash
-	qemu-system-riscv64 \
+### Running the Image
+
+Use the following command template:
+```bash
+qemu-system-riscv64 \
 	 -machine virt \
 	 -cpu rv64,v=true \
-	 -m <RAMSIZE> \
-	 -smp <NO.CPU_CORES> \
+	 -m <RAM_SIZE> \
+	 -smp <CPU_CORES> \
 	 -nographic \
 	 -kernel /usr/lib/u-boot/qemu-riscv64_smode/uboot.elf \
 	 -device virtio-net-device,netdev=net0 \
 	 -netdev user,id=net0 \
 	 -drive file=<PATH_TO_UBUNTU_IMG>,format=raw,if=virtio
-	 ```
+```
+
+**Example configuration:**
+```bash
+qemu-system-riscv64 \
+	 -machine virt \
+	 -cpu rv64,v=true \
+	 -m 4G \
+	 -smp 4 \
+	 -nographic \
+	 -kernel /usr/lib/u-boot/qemu-riscv64_smode/uboot.elf \
+	 -device virtio-net-device,netdev=net0 \
+	 -netdev user,id=net0 \
+	 -drive file=./ubuntu-24.04-preinstalled-server-riscv64.img,format=raw,if=virtio
+```
+
+> [!NOTE]
+> The `-cpu rv64,v=true` flag enables RISC-V Vector Extension support, which is essential for running the RVV kernels.
+
+---
+
