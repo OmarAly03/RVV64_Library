@@ -407,5 +407,116 @@ inline auto VECTOR_LTU_SCALAR(const VecType& op1, T scalar, size_t vl) {
     }
 }
 
+// Vector-Vector Less Than comparison
+template<typename T, int LMUL, typename VecType>
+inline auto VECTOR_LT(const VecType& op1, const VecType& op2, size_t vl) {
+	if constexpr (std::is_same_v<T, _Float16>) {
+		if constexpr (LMUL == MF4) return __riscv_vmflt_vv_f16mf4_b64(op1, op2, vl);
+		else if constexpr (LMUL == MF2) return __riscv_vmflt_vv_f16mf2_b32(op1, op2, vl);
+		else if constexpr (LMUL == M1) return __riscv_vmflt_vv_f16m1_b16(op1, op2, vl);
+		else if constexpr (LMUL == M2) return __riscv_vmflt_vv_f16m2_b8(op1, op2, vl);
+		else if constexpr (LMUL == M4) return __riscv_vmflt_vv_f16m4_b4(op1, op2, vl);
+		else if constexpr (LMUL == M8) return __riscv_vmflt_vv_f16m8_b2(op1, op2, vl);
+	}
+	else if constexpr (std::is_same_v<T, float>) {
+		if constexpr (LMUL == MF2) return __riscv_vmflt_vv_f32mf2_b64(op1, op2, vl);
+		else if constexpr (LMUL == M1) return __riscv_vmflt_vv_f32m1_b32(op1, op2, vl);
+		else if constexpr (LMUL == M2) return __riscv_vmflt_vv_f32m2_b16(op1, op2, vl);
+		else if constexpr (LMUL == M4) return __riscv_vmflt_vv_f32m4_b8(op1, op2, vl);
+		else if constexpr (LMUL == M8) return __riscv_vmflt_vv_f32m8_b4(op1, op2, vl);
+	}
+	else if constexpr (std::is_same_v<T, double>) {
+		if constexpr (LMUL == M1) return __riscv_vmflt_vv_f64m1_b64(op1, op2, vl);
+		else if constexpr (LMUL == M2) return __riscv_vmflt_vv_f64m2_b32(op1, op2, vl);
+		else if constexpr (LMUL == M4) return __riscv_vmflt_vv_f64m4_b16(op1, op2, vl);
+		else if constexpr (LMUL == M8) return __riscv_vmflt_vv_f64m8_b8(op1, op2, vl);
+	}
+	else if constexpr (std::is_same_v<T, int8_t>) {
+		if constexpr (LMUL == MF8) return __riscv_vmslt_vv_i8mf8_b64(op1, op2, vl);
+		else if constexpr (LMUL == MF4) return __riscv_vmslt_vv_i8mf4_b32(op1, op2, vl);
+		else if constexpr (LMUL == MF2) return __riscv_vmslt_vv_i8mf2_b16(op1, op2, vl);
+		else if constexpr (LMUL == M1) return __riscv_vmslt_vv_i8m1_b8(op1, op2, vl);
+		else if constexpr (LMUL == M2) return __riscv_vmslt_vv_i8m2_b4(op1, op2, vl);
+		else if constexpr (LMUL == M4) return __riscv_vmslt_vv_i8m4_b2(op1, op2, vl);
+		else if constexpr (LMUL == M8) return __riscv_vmslt_vv_i8m8_b1(op1, op2, vl);
+	}
+	else if constexpr (std::is_same_v<T, int16_t>) {
+		if constexpr (LMUL == MF4) return __riscv_vmslt_vv_i16mf4_b64(op1, op2, vl);
+		else if constexpr (LMUL == MF2) return __riscv_vmslt_vv_i16mf2_b32(op1, op2, vl);
+		else if constexpr (LMUL == M1) return __riscv_vmslt_vv_i16m1_b16(op1, op2, vl);
+		else if constexpr (LMUL == M2) return __riscv_vmslt_vv_i16m2_b8(op1, op2, vl);
+		else if constexpr (LMUL == M4) return __riscv_vmslt_vv_i16m4_b4(op1, op2, vl);
+		else if constexpr (LMUL == M8) return __riscv_vmslt_vv_i16m8_b2(op1, op2, vl);
+	}
+	else if constexpr (std::is_same_v<T, int32_t>) {
+		if constexpr (LMUL == MF2) return __riscv_vmslt_vv_i32mf2_b64(op1, op2, vl);
+		else if constexpr (LMUL == M1) return __riscv_vmslt_vv_i32m1_b32(op1, op2, vl);
+		else if constexpr (LMUL == M2) return __riscv_vmslt_vv_i32m2_b16(op1, op2, vl);
+		else if constexpr (LMUL == M4) return __riscv_vmslt_vv_i32m4_b8(op1, op2, vl);
+		else if constexpr (LMUL == M8) return __riscv_vmslt_vv_i32m8_b4(op1, op2, vl);
+	}
+	else if constexpr (std::is_same_v<T, int64_t>) {
+		if constexpr (LMUL == M1) return __riscv_vmslt_vv_i64m1_b64(op1, op2, vl);
+		else if constexpr (LMUL == M2) return __riscv_vmslt_vv_i64m2_b32(op1, op2, vl);
+		else if constexpr (LMUL == M4) return __riscv_vmslt_vv_i64m4_b16(op1, op2, vl);
+		else if constexpr (LMUL == M8) return __riscv_vmslt_vv_i64m8_b8(op1, op2, vl);
+	}
+}
+
+// Vector-Scalar Less Than comparison
+template<typename T, int LMUL, typename VecType>
+inline auto VECTOR_LT_SCALAR(const VecType& op1, T scalar, size_t vl) {
+	if constexpr (std::is_same_v<T, _Float16>) {
+		if constexpr (LMUL == MF4) return __riscv_vmflt_vf_f16mf4_b64(op1, scalar, vl);
+		else if constexpr (LMUL == MF2) return __riscv_vmflt_vf_f16mf2_b32(op1, scalar, vl);
+		else if constexpr (LMUL == M1) return __riscv_vmflt_vf_f16m1_b16(op1, scalar, vl);
+		else if constexpr (LMUL == M2) return __riscv_vmflt_vf_f16m2_b8(op1, scalar, vl);
+		else if constexpr (LMUL == M4) return __riscv_vmflt_vf_f16m4_b4(op1, scalar, vl);
+		else if constexpr (LMUL == M8) return __riscv_vmflt_vf_f16m8_b2(op1, scalar, vl);
+	}
+	else if constexpr (std::is_same_v<T, float>) {
+		if constexpr (LMUL == MF2) return __riscv_vmflt_vf_f32mf2_b64(op1, scalar, vl);
+		else if constexpr (LMUL == M1) return __riscv_vmflt_vf_f32m1_b32(op1, scalar, vl);
+		else if constexpr (LMUL == M2) return __riscv_vmflt_vf_f32m2_b16(op1, scalar, vl);
+		else if constexpr (LMUL == M4) return __riscv_vmflt_vf_f32m4_b8(op1, scalar, vl);
+		else if constexpr (LMUL == M8) return __riscv_vmflt_vf_f32m8_b4(op1, scalar, vl);
+	}
+	else if constexpr (std::is_same_v<T, double>) {
+		if constexpr (LMUL == M1) return __riscv_vmflt_vf_f64m1_b64(op1, scalar, vl);
+		else if constexpr (LMUL == M2) return __riscv_vmflt_vf_f64m2_b32(op1, scalar, vl);
+		else if constexpr (LMUL == M4) return __riscv_vmflt_vf_f64m4_b16(op1, scalar, vl);
+		else if constexpr (LMUL == M8) return __riscv_vmflt_vf_f64m8_b8(op1, scalar, vl);
+	}
+	else if constexpr (std::is_same_v<T, int8_t>) {
+		if constexpr (LMUL == MF8) return __riscv_vmslt_vx_i8mf8_b64(op1, scalar, vl);
+		else if constexpr (LMUL == MF4) return __riscv_vmslt_vx_i8mf4_b32(op1, scalar, vl);
+		else if constexpr (LMUL == MF2) return __riscv_vmslt_vx_i8mf2_b16(op1, scalar, vl);
+		else if constexpr (LMUL == M1) return __riscv_vmslt_vx_i8m1_b8(op1, scalar, vl);
+		else if constexpr (LMUL == M2) return __riscv_vmslt_vx_i8m2_b4(op1, scalar, vl);
+		else if constexpr (LMUL == M4) return __riscv_vmslt_vx_i8m4_b2(op1, scalar, vl);
+		else if constexpr (LMUL == M8) return __riscv_vmslt_vx_i8m8_b1(op1, scalar, vl);
+	}
+	else if constexpr (std::is_same_v<T, int16_t>) {
+		if constexpr (LMUL == MF4) return __riscv_vmslt_vx_i16mf4_b64(op1, scalar, vl);
+		else if constexpr (LMUL == MF2) return __riscv_vmslt_vx_i16mf2_b32(op1, scalar, vl);
+		else if constexpr (LMUL == M1) return __riscv_vmslt_vx_i16m1_b16(op1, scalar, vl);
+		else if constexpr (LMUL == M2) return __riscv_vmslt_vx_i16m2_b8(op1, scalar, vl);
+		else if constexpr (LMUL == M4) return __riscv_vmslt_vx_i16m4_b4(op1, scalar, vl);
+		else if constexpr (LMUL == M8) return __riscv_vmslt_vx_i16m8_b2(op1, scalar, vl);
+	}
+	else if constexpr (std::is_same_v<T, int32_t>) {
+		if constexpr (LMUL == MF2) return __riscv_vmslt_vx_i32mf2_b64(op1, scalar, vl);
+		else if constexpr (LMUL == M1) return __riscv_vmslt_vx_i32m1_b32(op1, scalar, vl);
+		else if constexpr (LMUL == M2) return __riscv_vmslt_vx_i32m2_b16(op1, scalar, vl);
+		else if constexpr (LMUL == M4) return __riscv_vmslt_vx_i32m4_b8(op1, scalar, vl);
+		else if constexpr (LMUL == M8) return __riscv_vmslt_vx_i32m8_b4(op1, scalar, vl);
+	}
+	else if constexpr (std::is_same_v<T, int64_t>) {
+		if constexpr (LMUL == M1) return __riscv_vmslt_vx_i64m1_b64(op1, scalar, vl);
+		else if constexpr (LMUL == M2) return __riscv_vmslt_vx_i64m2_b32(op1, scalar, vl);
+		else if constexpr (LMUL == M4) return __riscv_vmslt_vx_i64m4_b16(op1, scalar, vl);
+		else if constexpr (LMUL == M8) return __riscv_vmslt_vx_i64m8_b8(op1, scalar, vl);
+	}
+}
 
 #endif // RVV_INT_COMPARISON_HPP
