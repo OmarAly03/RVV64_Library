@@ -7,7 +7,7 @@
 #include <cmath>     // For mathematical functions
 #include "../../../lib/rvv_defs.hpp"
 
-using namespace std;  // Add this to avoid std:: prefix everywhere
+using namespace std;
 
 
 /****************** Specific Image Pre-processing Kernel ******************/

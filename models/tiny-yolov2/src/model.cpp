@@ -284,7 +284,6 @@ std::vector<BoundingBox> yolo_model_inference(
     bias_add_e32m8(out_ptr, w.conv8_b.data(), out_ptr, 125, channel_size);
 
     // --- 4. Post-processing ---
-    // NOTE: These functions STILL use std::vector.
     std::vector<BoundingBox> boxes = decode_output(out_ptr, ANCHORS);
     return non_max_suppression(boxes);
 }

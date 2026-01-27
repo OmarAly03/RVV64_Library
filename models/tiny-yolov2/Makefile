@@ -11,7 +11,7 @@ FLAGS = -march=rv64gcv -O1 -g -static
 # Include directories
 INCLUDES = -Iinclude 
 
-# Source files for YOLO (removed config.cpp)
+# Source files for YOLO 
 SRCS = main.cpp src/model.cpp src/kernels.cpp
 
 # Output binary

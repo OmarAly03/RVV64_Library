@@ -59,7 +59,6 @@ for image_path in image_files:
         image_rgb = cv2.cvtColor(image_resized, cv2.COLOR_BGR2RGB)
         
         # 4. Convert to float32
-        # (Remember: no / 255.0 because our model has the scaler built-in)
         image_float = image_rgb.astype(np.float32)
         
         # 5. Transpose from (H, W, C) to (C, H, W)
